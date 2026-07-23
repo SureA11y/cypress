@@ -102,6 +102,12 @@ const { A11yCoreBuilderBase } = require('a11y-core-binding-base');
  * (`occurrence.element`), and you wrap it in a Cypress chainable yourself
  * with `cy.wrap(...)` when you need one (see ../ROADMAP.md §2e).
  *
+ * `analyze()` also writes one `Cypress.log()` entry per fail/cantTell rule
+ * plus a trailing summary entry to the Command Log -- parity with
+ * `cypress-axe`'s `checkA11y()`, which does the same for axe's violations.
+ * See `_logFindings()` below for the full rationale (including why this
+ * binding needed it added explicitly, unlike axe where it ships built in).
+ *
  * Register your own rule(s) for just this scan with `.withCustomRules()`
  * (a11y-core's `engineOptions.customRules` escape hatch, axe's
  * `configure({ rules })` equivalent -- see a11y-core's docs/ENGINE_OPTIONS.md).
@@ -161,12 +167,88 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
     // cy-command chaining) is all that's needed.
     return cy.window().then((win) => {
       const topFrame = this._applyReportOnly(this._runInWindow(win, this._url, contextSelector, engineOptions, runOnly));
+      this._logFindings(topFrame, win);
 
       if (!this._scanFrames) return topFrame;
 
       const frames = [];
       this._collectFrames(win, contextSelector, engineOptions, runOnly, frames);
       return { topFrame, frames };
+    });
+  }
+
+  /**
+   * Emits Cypress Command Log entries for this result's fail/cantTell
+   * findings -- parity with `cypress-axe`'s `checkA11y()`, which does the
+   * same via its own internal `Cypress.log()` calls (see
+   * `node_modules/cypress-axe/dist/index.js`: a `violations.forEach(...)`
+   * loop logging one `'a11y error!'` entry per rule, `message: '<id> on N
+   * Node(s)'`, followed by an `'a11y violation summary'` entry). Before this
+   * method existed, `analyze()`'s only command-log trace was a bare
+   * `window`/`then` step -- a real, user-noticed gap found by comparing this
+   * project's own `a11y-core.cy.ts` spec side-by-side with `axe.cy.ts` in a
+   * consuming project: axe's Command Log named every violated rule and node
+   * count inline; a11y-core's showed nothing beyond whatever `cy.task(...)`
+   * the test itself happened to add, plus Chai's own truncated `Array(12)`
+   * failure message on assertion failure.
+   *
+   * Named `'a11y-core error!'` / `'a11y-core violation summary'` -- distinct
+   * from axe's exact `'a11y error!'` / `'a11y violation summary'` so the two
+   * are tell-apart-able at a glance in a Command Log where both bindings'
+   * specs run side by side (as they do in at least one consuming project),
+   * while staying visually parallel enough to read as "the same kind of
+   * thing".
+   *
+   * One log entry per RULE, not per occurrence -- like axe's, since a single
+   * rule can flag several elements at once (hence "on N Nodes"). Unlike axe,
+   * a rule can also report zero occurrences: a thrown rule surfaces as
+   * `outcome: 'cantTell'` with `occurrences: []` and `error` set (see
+   * `../a11y-core/docs/OUTPUT_SCHEMA.md`) -- `formatFailures()` already
+   * special-cases this (falls back to `error`/`title` instead of an
+   * occurrence-derived message), and this method mirrors that same fallback
+   * so the two stay consistent with each other.
+   *
+   * `$el` is resolved with `win.document` as jQuery's context argument
+   * (`Cypress.$(selectors, win.document)`), not left to jQuery's default --
+   * axe's own equivalent (`Cypress.$(selectors)`, no context arg) always
+   * resolves against the top AUT document, which would silently
+   * mis-highlight or fail to highlight a sub-frame's own occurrences when
+   * called from `_collectFrames()` below for a `.frames(true)` scan.
+   *
+   * Runs unconditionally inside `analyze()` (not opt-in) -- same as
+   * `cypress-axe`, which logs regardless of `skipFailures`. Purely additive
+   * to the Command Log; never touches the returned result object or throws,
+   * so it can't change any existing assertion's pass/fail outcome.
+   *
+   * @param {object} result one result object (`{ checksResults, ... }`) --
+   *   either `topFrame` or one entry of `frames`, never the outer
+   *   `{ topFrame, frames }` wrapper.
+   * @param {Window} win the window that result was scanned from, used only
+   *   to scope `$el` resolution to the right document.
+   */
+  _logFindings(result, win) {
+    const relevant = result.checksResults.filter((r) => r.outcome === 'fail' || r.outcome === 'cantTell');
+    if (!relevant.length) return;
+
+    for (const check of relevant) {
+      const n = check.occurrences.length;
+      const selectors = check.occurrences.map((o) => o.selector).filter(Boolean).join(', ');
+      // Same "no occurrences -- fall back to error/title" case formatFailures()
+      // handles (see its own comment) -- a thrown rule has nothing else to
+      // point at.
+      const detail = n ? `on ${n} Node${n === 1 ? '' : 's'}` : (check.error || check.title);
+
+      Cypress.log({
+        $el: selectors ? Cypress.$(selectors, win.document) : undefined,
+        name: 'a11y-core error!',
+        consoleProps: () => check,
+        message: `${check.ruleId} (${check.severity}): ${detail}`,
+      });
+    }
+
+    Cypress.log({
+      name: 'a11y-core violation summary',
+      message: `${relevant.length} accessibility issue${relevant.length === 1 ? '' : 's'} ${relevant.length === 1 ? 'was' : 'were'} detected`,
     });
   }
 
@@ -218,7 +300,12 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         // pageUrl: null -- let a11y-core self-detect each frame's own URL
         // via its own document.location.href fallback (see src/core.js),
         // rather than this binding re-deriving it itself.
-        out.push(this._applyReportOnly(this._runInWindow(childWin, null, contextSelector, engineOptions, runOnly)));
+        const frameResult = this._applyReportOnly(this._runInWindow(childWin, null, contextSelector, engineOptions, runOnly));
+        // childWin, not win/the top window -- see _logFindings()'s own
+        // comment on why $el must be scoped to the frame that was actually
+        // scanned.
+        this._logFindings(frameResult, childWin);
+        out.push(frameResult);
       } catch (e) {
         out.push({
           url: (childWin.location && childWin.location.href) || null,

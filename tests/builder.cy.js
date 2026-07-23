@@ -491,4 +491,67 @@ describe('A11yCoreBuilder', () => {
       expect(output).to.include('#pic'); // a11y-core prefers an ID selector when the element has one
     });
   });
+
+  // Parity with cypress-axe's checkA11y() -- see ../ROADMAP.md §9 for the
+  // full rationale (why this was added, why the log names differ slightly
+  // from axe's own, why it isn't ported to the sibling bindings).
+  describe('Cypress.log() Command Log entries (../ROADMAP.md §9)', () => {
+    it('analyze() logs one \'a11y-core error!\' entry per fail rule plus a trailing summary entry', () => {
+      cy.visit('cypress/fixtures/basic.html');
+      const logSpy = cy.spy(Cypress, 'log').log(false); // .log(false): don't recursively log the spy's own invocations
+
+      new A11yCoreBuilder().analyze().then((results) => {
+        const fails = results.checksResults.filter((r) => r.outcome === 'fail');
+        // basic.html's known fails, per tests/debug scan: button-name-present
+        // and img-alt-present (used elsewhere in this file), plus
+        // bypass-blocks-present (no skip link) which fires on every fixture
+        // with no landmark/skip-link, unrelated to this test's own markup.
+        expect(fails, 'sanity check: basic.html has known fails').to.have.length(3);
+
+        const errorCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-core error!');
+        const summaryCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-core violation summary');
+
+        expect(errorCalls, 'one log entry per fail rule').to.have.length(3);
+        expect(errorCalls.map((c) => c.args[0].message)).to.include.members([
+          'a11ycore-button-name-present (serious): on 1 Node',
+          'a11ycore-img-alt-present (serious): on 1 Node',
+          'a11ycore-bypass-blocks-present (serious): on 1 Node',
+        ]);
+
+        expect(summaryCalls, 'exactly one trailing summary entry').to.have.length(1);
+        expect(summaryCalls[0].args[0].message).to.equal('3 accessibility issues were detected');
+      });
+    });
+
+    it('analyze() logs nothing when there are no fail/cantTell findings', () => {
+      cy.visit('cypress/fixtures/well-formed.html');
+      const logSpy = cy.spy(Cypress, 'log').log(false);
+
+      // well-formed.html still carries a handful of genuine 'cantTell'
+      // manual-review findings (contrast-computable, page-title-patterns,
+      // etc.) -- reportOnly(['fail']) here isn't just trimming the payload,
+      // it's what makes checksResults (and so _logFindings' own input)
+      // actually empty, the same way the "no detectable violations" gate in
+      // the consuming UI project's own clean-views spec only asserts on
+      // 'fail', not 'cantTell'.
+      new A11yCoreBuilder().reportOnly(['fail']).analyze().then((results) => {
+        expect(results.checksResults, 'sanity check: well-formed.html has no fails').to.have.length(0);
+        expect(logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-core error!')).to.have.length(0);
+        expect(logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-core violation summary')).to.have.length(0);
+      });
+    });
+
+    it('frames(true) logs each same-origin sub-frame\'s findings separately from the top frame\'s', () => {
+      cy.visit('cypress/fixtures/frame-parent-same-origin.html');
+      const logSpy = cy.spy(Cypress, 'log').log(false);
+
+      new A11yCoreBuilder().frames(true).analyze().then(() => {
+        const errorCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-core error!');
+        // Top frame's own button has real text (passes); only the child
+        // frame's img-alt-present should have logged.
+        expect(errorCalls.some((c) => c.args[0].message.startsWith('a11ycore-img-alt-present'))).to.be.true;
+        expect(errorCalls.some((c) => c.args[0].message.startsWith('a11ycore-button-name-present'))).to.be.false;
+      });
+    });
+  });
 });

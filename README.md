@@ -97,6 +97,24 @@ AssertionError: 1) a11ycore-button-name-present (serious): This button has no ac
 
 Deliberately a plain function, not a custom Cypress/Chai assertion — no dependency on any particular assertion library. Defaults to `fail`/`cantTell` outcomes (the only two that ever carry occurrences); pass `{ outcomes: [...] }` to narrow further. A thrown rule (`occurrences: []`, `error` set — see `../a11y-core/docs/OUTPUT_SCHEMA.md`) is still surfaced using its `error` message rather than silently dropped.
 
+### Command Log entries, automatically — parity with `cypress-axe`
+
+Every `.analyze()` call also writes straight to the Cypress Command Log, with no opt-in needed: one entry per fail/cantTell rule, plus a trailing summary, e.g.
+
+```
+a11y-core error!  a11ycore-button-name-present (serious): on 1 Node
+a11y-core error!  a11ycore-img-alt-present (serious): on 1 Node
+a11y-core violation summary   2 accessibility issues were detected
+```
+
+Click any `a11y-core error!` row to highlight the flagged element(s) in the app preview (`$el`, resolved via the occurrences' selectors), and its `consoleProps` (open the browser DevTools console after clicking the row) prints the full check object — `ruleId`/`severity`/`occurrences`/etc.
+
+This exists specifically to match `cypress-axe`'s `checkA11y()`, which does the same thing for axe's violations via its own internal `Cypress.log()` calls — before this was added, `.analyze()`'s only Command Log trace was a bare `window`/`then` step, noticeably less informative side-by-side with an axe-based spec testing the same page (found by exactly that side-by-side comparison in a consuming project). Entries are named `'a11y-core error!'`/`'a11y-core violation summary'` — distinguishable from axe's own `'a11y error!'`/`'a11y violation summary'` at a glance when both bindings' specs run in the same suite, while staying visually parallel enough to read as the same kind of thing.
+
+Purely additive to the Command Log — it never touches the value `.analyze()` resolves to, so it can't change any assertion's pass/fail outcome, and there's nothing to configure or disable. Combines with `.frames(true)`: each sub-frame's own findings are logged separately, scoped to that frame's own document (not the top page's).
+
+Only Cypress gets this — see "Relationship to the sibling bindings" below for why the other four bindings don't have (and don't need) an equivalent.
+
 ### Scanning every frame, including same-origin iframes
 
 ```js
@@ -183,6 +201,7 @@ This binding's builder API is deliberately close to [`a11y-core-playwright`](../
 - `withCustomRules()` needs no function-to-string conversion (§2b/§2f).
 - `.elementRef(true)` attaches a plain `Element`, not a driver-native handle (§2e).
 - `.frames(true)` cannot reach genuinely cross-origin iframes — an honest, real limitation the other four bindings don't have (§2d).
+- `analyze()` writes `Cypress.log()` Command Log entries automatically (§9) — the other four bindings run as plain Node test processes (Jest/Mocha/etc.) with no equivalent live-reporter object to write to; their readable-output story is `formatFailures()` instead (same package, shared by all five — see "Readable console/CI output on failure" above), which is what this binding also falls back to for a plain-text/CI failure message.
 
 Also see [`../a11y-core/docs/BINDING_AUTHORS_GUIDE.md`](../a11y-core/docs/BINDING_AUTHORS_GUIDE.md) — `a11y-core`'s own reference for building a binding like this one.
 

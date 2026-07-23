@@ -1,0 +1,24 @@
+{
+  "name": "a11y-core-cypress",
+  "version": "0.1.0",
+  "description": "Cypress binding for a11y-core -- scan real, live-rendered pages for accessibility issues.",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "dependencies": {
+    "a11y-core": "file:../a11y-core"
+  },
+  "peerDependencies": {
+    "cypress": ">=13.0.0"
+  },
+  "devDependencies": {
+    "cypress": "^14.0.0"
+  },
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.js\"",
+    "example:e2e": "cypress run"
+  }
+}

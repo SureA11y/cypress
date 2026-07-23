@@ -18,7 +18,11 @@
     "cypress": "^14.0.0"
   },
   "scripts": {
-    "test": "node --test \"tests/**/*.test.js\"",
-    "example:e2e": "cypress run"
+    "test": "node --test \"tests/**/*.test.js\" && cypress run --spec \"tests/**/*.cy.js\"",
+    "test:unit": "node --test \"tests/**/*.test.js\"",
+    "test:cypress": "cypress run --spec \"tests/**/*.cy.js\"",
+    "cypress:open": "cypress open",
+    "example": "cypress run --spec \"examples/basic-scan.cy.js\"",
+    "example:e2e": "cypress run --spec \"examples/e2e-test-example.cy.js\""
   }
 }

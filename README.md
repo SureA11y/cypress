@@ -176,7 +176,7 @@ Every occurrence already carries `selector` and (with `.elementRef(true)`, above
 
 ## Relationship to the sibling bindings
 
-This binding's builder API is deliberately close to [`a11y-core-playwright`](../a11y-core-playwright)'s and [`a11y-core-puppeteer`](../a11y-core-puppeteer)'s — same method names, same mutability contract, same result shapes wherever Cypress's own architecture allows it. The real differences, all driven by Cypress's fundamentally different architecture (test code runs in-browser, not as a separate automation-process driver — see `ROADMAP.md` §1–§2), are:
+This binding's builder API is deliberately close to [`a11y-core-playwright`](../a11y-core-playwright)'s and [`a11y-core-puppeteer`](../a11y-core-puppeteer)'s — same method names, same mutability contract, same result shapes wherever Cypress's own architecture allows it. As of this package's own `ROADMAP.md` §8, that's no longer just convention: `A11yCoreBuilder` here extends `A11yCoreBuilderBase` from [`../a11y-core-binding-base`](../a11y-core-binding-base), a small shared package every one of the five bindings now depends on for their common, non-driver-specific logic (`include`/`exclude`/`withTags`/`disableTags`/`withRules`/`disableRules`/`options`/`reportOnly`/`elementRef`/`frames`, `withCustomRules()`'s validation, and `formatFailures()`). The real differences, all driven by Cypress's fundamentally different architecture (test code runs in-browser, not as a separate automation-process driver — see `ROADMAP.md` §1–§2), stay local to this project's own `A11yCoreBuilder.js`:
 
 - No `{ page }`/`{ browser }`/`{ driver }` constructor argument (§2c/README above).
 - `analyze()` returns a Cypress chainable, not a `Promise` (§2c).

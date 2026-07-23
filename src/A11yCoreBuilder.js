@@ -1,10 +1,7 @@
 'use strict';
 
 const { runa11yCoreInPage } = require('a11y-core');
-
-// See a11y-core's docs/OUTPUT_SCHEMA.md -- the only valid `outcome` values a
-// checksResults entry can carry.
-const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
+const { A11yCoreBuilderBase } = require('a11y-core-binding-base');
 
 /**
  * Cypress binding for a11y-core -- scans a real, already-rendered page.
@@ -25,6 +22,16 @@ const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
  * violations/passes/incomplete/inapplicable shape. Method names are modeled
  * on axe-core's AxeBuilder (and this package's own sibling bindings) for
  * migration ease, but the richer native schema is kept as-is.
+ *
+ * Extends `A11yCoreBuilderBase` (from `a11y-core-binding-base`), which owns
+ * every method with no driver-specific work at all -- `include()`/
+ * `exclude()`/`withTags()`/`disableTags()`/`withRules()`/`disableRules()`/
+ * `options()`/`reportOnly()`/`elementRef()`/`frames()`/`withCustomRules()`'s
+ * validation, and `_buildEngineArgs()`. This class adds exactly the parts
+ * that are genuinely Cypress-specific: `analyze()`'s injection mechanics,
+ * frame traversal, `_attachElementRefs()`, and (see below) opting out of the
+ * base's default customRules stringification. See
+ * `../a11y-core-binding-base/README.md` for what's shared and why.
  *
  * No `{ page }`/`{ browser }`/`{ driver }` constructor argument, unlike every
  * sibling binding (Playwright/Puppeteer/Selenium/WebdriverIO) -- there's no
@@ -59,7 +66,7 @@ const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
  * Because of that same realm access, a live `customRules` function (defined
  * back in the spec's own realm) can be passed straight through with no
  * `.toString()` conversion -- unlike every sibling binding's
- * `withCustomRules()`. See `withCustomRules()` below.
+ * `withCustomRules()`. See `_normalizeCustomRule()` below.
  *
  * ## Scanning every frame, including same-origin nested iframes
  *
@@ -109,7 +116,7 @@ const VALID_OUTCOMES = ['pass', 'fail', 'cantTell', 'notApplicable'];
  * one instance across multiple assertions). reportOnly()/frames()/
  * elementRef() are the exception: each call replaces the previous value.
  */
-class A11yCoreBuilder {
+class A11yCoreBuilder extends A11yCoreBuilderBase {
   /**
    * @param {{ url?: string }} [opts] `url` overrides the URL a11y-core
    *   reports for the *top* frame's result (`result.url`) -- rarely needed;
@@ -119,160 +126,22 @@ class A11yCoreBuilder {
    *   way, regardless of this option.
    */
   constructor({ url } = {}) {
-    this._url = url || null;
-    this._scanFrames = false;
-    this._includeSelectors = [];
-    this._excludeSelectors = [];
-    this._includeRuleIds = [];
-    this._excludeRuleIds = [];
-    this._tags = [];
-    this._excludeTags = [];
-    this._engineOptions = {};
-    this._reportOutcomes = null;
-    this._elementRef = false;
-    this._customRules = [];
+    super({ url });
   }
 
   /**
-   * Scope the scan to one region. Call multiple times to scan several,
-   * possibly disjoint regions in one run (a11y-core's contextSelector
-   * accepts an array of selectors for exactly this -- see a11y-core's
-   * docs/ENGINE_OPTIONS.md).
-   */
-  include(selector) {
-    if (selector) this._includeSelectors.push(selector);
-    return this;
-  }
-
-  /** Skip elements matching this selector anywhere in the scanned scope. */
-  exclude(selector) {
-    if (selector) this._excludeSelectors.push(selector);
-    return this;
-  }
-
-  /** Only run rules carrying at least one of these tags. */
-  withTags(tags) {
-    this._tags = this._tags.concat(Array.isArray(tags) ? tags : [tags]);
-    return this;
-  }
-
-  /** Never run rules carrying any of these tags (applied after withTags). */
-  disableTags(tags) {
-    this._excludeTags = this._excludeTags.concat(Array.isArray(tags) ? tags : [tags]);
-    return this;
-  }
-
-  /** Only run these specific rule IDs (accepts with or without the a11ycore- prefix). */
-  withRules(ruleIds) {
-    this._includeRuleIds = this._includeRuleIds.concat(Array.isArray(ruleIds) ? ruleIds : [ruleIds]);
-    return this;
-  }
-
-  /** Never run these specific rule IDs (applied after withRules). */
-  disableRules(ruleIds) {
-    this._excludeRuleIds = this._excludeRuleIds.concat(Array.isArray(ruleIds) ? ruleIds : [ruleIds]);
-    return this;
-  }
-
-  /** Merge arbitrary engineOptions (locale, contrast.mode, policyContract, ...) -- see a11y-core's docs/ENGINE_OPTIONS.md. */
-  options(partialEngineOptions) {
-    this._engineOptions = { ...this._engineOptions, ...(partialEngineOptions || {}) };
-    return this;
-  }
-
-  /**
-   * Register one or more custom rules for just this scan (a11y-core's
-   * engineOptions.customRules escape hatch -- see a11y-core's
-   * docs/ENGINE_OPTIONS.md -- axe's configure({ rules }) equivalent). A
-   * descriptor is { id, meta?, runInPage, applicability?, data? }, the same
-   * shape as an internal a11y-core rule module's own export. Call multiple
-   * times to register several rules across one scan (accumulates, same as
-   * withRules()/withTags(), rather than replacing).
-   *
-   * Unlike every sibling binding's withCustomRules(), `runInPage`/
-   * `applicability` need **no** `.toString()` conversion here, live or not:
-   * there is no page.evaluate()-style JSON boundary to cross in Cypress --
-   * spec code and the reconstructed in-page function share real object/
-   * function references once the realm-boundary trick (see this class's own
-   * header comment, and ../ROADMAP.md §2b) has been applied. A live function
-   * defined in the spec file is invoked directly, cross-realm, exactly like
-   * a11y-core's own built-in rules are. A function-source string is still
-   * accepted too (a11y-core reconstructs it the same way its built-ins are
+   * Overrides A11yCoreBuilderBase's default (which stringifies a live
+   * runInPage/applicability function via toReconstructableSource() -- correct
+   * for every sibling binding, since their drivers cross a real serialization
+   * boundary). Cypress needs no such conversion: a live function defined in
+   * the spec file is invoked directly, cross-realm, exactly like a11y-core's
+   * own built-in rules are -- see this class's own header comment and
+   * ../ROADMAP.md §2b/§2f. A function-source string is still accepted too
+   * (a11y-core reconstructs it the same way its built-ins are
    * reconstructed), for parity with the sibling bindings' accepted input.
-   *
-   * A descriptor whose `id` collides with a built-in rule overrides it for
-   * that scan only (a11y-core's own semantics, matching axe's configure()
-   * override behavior) -- nothing here persists past this one analyze() call
-   * or mutates a11y-core's static rule catalog.
    */
-  withCustomRules(rules) {
-    const list = Array.isArray(rules) ? rules : [rules];
-
-    // Validate the whole batch before pushing any of it, so one invalid
-    // descriptor later in the array can't leave an earlier valid one
-    // partially registered.
-    for (const rule of list) {
-      if (!rule || typeof rule.id !== 'string' || !rule.id) {
-        throw new Error('A11yCoreBuilder.withCustomRules(): each custom rule descriptor requires a non-empty string `id`.');
-      }
-      if (typeof rule.runInPage !== 'function' && (typeof rule.runInPage !== 'string' || !rule.runInPage)) {
-        throw new Error(`A11yCoreBuilder.withCustomRules(): custom rule "${rule.id}" requires a \`runInPage\` function or function-source string.`);
-      }
-      if (rule.applicability !== undefined && typeof rule.applicability !== 'function' && (typeof rule.applicability !== 'string' || !rule.applicability)) {
-        throw new Error(`A11yCoreBuilder.withCustomRules(): custom rule "${rule.id}"'s \`applicability\` must be a function or function-source string when provided.`);
-      }
-    }
-
-    this._customRules.push(...list);
-    return this;
-  }
-
-  /**
-   * Post-filter `checksResults` down to only the given outcomes (e.g.
-   * .reportOnly(['fail', 'cantTell']) to drop pass/notApplicable noise).
-   * Binding-layer only -- a11y-core itself always computes every rule; this
-   * just trims what analyze() hands back. Applied per-frame when combined
-   * with .frames(true).
-   */
-  reportOnly(outcomes) {
-    const list = Array.isArray(outcomes) ? outcomes : [outcomes];
-    for (const outcome of list) {
-      if (!VALID_OUTCOMES.includes(outcome)) {
-        throw new Error(`A11yCoreBuilder.reportOnly(): invalid outcome "${outcome}" -- must be one of ${VALID_OUTCOMES.join(', ')}.`);
-      }
-    }
-    this._reportOutcomes = list;
-    return this;
-  }
-
-  /**
-   * Opt in to attaching each fail/cantTell occurrence's resolved DOM
-   * `Element` (as `occurrence.element`), so you can act on the flagged
-   * element directly -- e.g. `cy.wrap(occurrence.element).should(...)` --
-   * instead of re-resolving `occurrence.selector` yourself. Default off.
-   * Combines with `.frames(true)`: each frame's occurrences are resolved
-   * against that frame's own document, not the top page's. Not every
-   * occurrence resolves to one element -- a page-wide finding (e.g. some
-   * manual/cantTell rules) can carry `selector: ""`, in which case
-   * `occurrence.element` is `null` rather than an Element.
-   */
-  elementRef(enabled = true) {
-    this._elementRef = !!enabled;
-    return this;
-  }
-
-  /**
-   * Opt in to also scanning every same-origin sub-frame reachable from the
-   * top window (recursively -- a nested iframe's own iframes are included
-   * too), flattened into one `frames` array alongside `topFrame`. Default
-   * off; when off, analyze() returns the same single native result object
-   * it always has. Genuinely cross-origin iframes cannot be reached this
-   * way -- see this class's own header comment and ../ROADMAP.md §2d; each
-   * shows up in `frames` as `{ url, error }` instead of aborting the scan.
-   */
-  frames(enabled = true) {
-    this._scanFrames = !!enabled;
-    return this;
+  _normalizeCustomRule(rule) {
+    return { ...rule };
   }
 
   /**
@@ -283,32 +152,7 @@ class A11yCoreBuilder {
    * @returns {Cypress.Chainable<object>} see a11y-core's docs/OUTPUT_SCHEMA.md
    */
   analyze() {
-    const contextSelector = this._includeSelectors.length
-      ? (this._includeSelectors.length === 1 ? this._includeSelectors[0] : this._includeSelectors)
-      : null;
-
-    const engineOptions = { ...this._engineOptions };
-    if (this._customRules.length) {
-      // Concatenated with, not replaced by, any customRules already present
-      // via a raw .options({ customRules }) call, so the two ways of
-      // registering a custom rule compose rather than one silently
-      // clobbering the other.
-      const existing = Array.isArray(this._engineOptions.customRules) ? this._engineOptions.customRules : [];
-      engineOptions.customRules = existing.concat(this._customRules);
-    }
-    if (this._excludeSelectors.length) {
-      engineOptions.excludeSelectors = this._excludeSelectors;
-    }
-
-    const hasRunOnly = this._includeRuleIds.length || this._excludeRuleIds.length || this._tags.length || this._excludeTags.length;
-    const runOnly = hasRunOnly
-      ? {
-        includeRuleIds: this._includeRuleIds.length ? this._includeRuleIds : undefined,
-        excludeRuleIds: this._excludeRuleIds.length ? this._excludeRuleIds : undefined,
-        tags: this._tags.length ? this._tags : undefined,
-        excludeTags: this._excludeTags.length ? this._excludeTags : undefined
-      }
-      : null;
+    const { contextSelector, engineOptions, runOnly } = this._buildEngineArgs();
 
     // cy.window() gives a live reference to the AUT's real `window` -- see
     // this class's own header comment for why that alone isn't enough to
@@ -385,15 +229,6 @@ class A11yCoreBuilder {
 
       this._collectFrames(childWin, contextSelector, engineOptions, runOnly, out);
     }
-  }
-
-  /** Filters a single native result object's checksResults per .reportOnly(), if set. */
-  _applyReportOnly(result) {
-    if (!this._reportOutcomes || !Array.isArray(result.checksResults)) return result;
-    return {
-      ...result,
-      checksResults: result.checksResults.filter((r) => this._reportOutcomes.includes(r.outcome))
-    };
   }
 
   /**

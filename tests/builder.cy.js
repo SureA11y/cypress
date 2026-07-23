@@ -500,13 +500,17 @@ describe('A11yCoreBuilder', () => {
       cy.visit('cypress/fixtures/basic.html');
       const logSpy = cy.spy(Cypress, 'log').log(false); // .log(false): don't recursively log the spy's own invocations
 
-      new A11yCoreBuilder().analyze().then((results) => {
-        const fails = results.checksResults.filter((r) => r.outcome === 'fail');
+      // reportOnly(['fail']) scopes this down to just basic.html's
+      // deterministic fails -- unscoped, this fixture (missing a <main>/<h1>
+      // like every other minimal test fixture here) also carries several
+      // genuine 'cantTell' manual-review findings, which _logFindings()
+      // logs too (same outcomes formatFailures() covers) but aren't this
+      // test's concern.
+      new A11yCoreBuilder().reportOnly(['fail']).analyze().then((results) => {
         // basic.html's known fails, per tests/debug scan: button-name-present
         // and img-alt-present (used elsewhere in this file), plus
-        // bypass-blocks-present (no skip link) which fires on every fixture
-        // with no landmark/skip-link, unrelated to this test's own markup.
-        expect(fails, 'sanity check: basic.html has known fails').to.have.length(3);
+        // bypass-blocks-present (no skip link).
+        expect(results.checksResults, 'sanity check: basic.html has known fails').to.have.length(3);
 
         const errorCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-core error!');
         const summaryCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-core violation summary');

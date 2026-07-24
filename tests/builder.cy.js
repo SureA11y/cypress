@@ -492,9 +492,9 @@ describe('A11yCoreBuilder', () => {
     });
   });
 
-  // Parity with cypress-axe's checkA11y() -- see ../ROADMAP.md §9 for the
-  // full rationale (why this was added, why the log names differ slightly
-  // from axe's own, why it isn't ported to the sibling bindings).
+  // Readable per-violation Command Log entries -- see ../ROADMAP.md §9 for the
+  // full rationale (why this was added, why the log names are what they are,
+  // why it isn't ported to the sibling bindings).
   describe('Cypress.log() Command Log entries (../ROADMAP.md §9)', () => {
     it('analyze() logs one \'a11y-core error!\' entry per fail rule plus a trailing summary entry', () => {
       cy.visit('cypress/fixtures/basic.html');

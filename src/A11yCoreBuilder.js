@@ -18,10 +18,11 @@ const { A11yCoreBuilderBase } = require('@a11y-core/binding-base');
  *   });
  *
  * `results` is a11y-core's own native result shape (checksResults /
- * rulesResults -- see a11y-core's docs/OUTPUT_SCHEMA.md), not axe-core's
- * violations/passes/incomplete/inapplicable shape. Method names are modeled
- * on axe-core's AxeBuilder (and this package's own sibling bindings) for
- * migration ease, but the richer native schema is kept as-is.
+ * rulesResults -- see a11y-core's docs/OUTPUT_SCHEMA.md), not the
+ * violations/passes/incomplete/inapplicable shape used by other tools in
+ * this space. Method names are modeled on common conventions in this space
+ * (and this package's own sibling bindings) for migration ease, but the
+ * richer native schema is kept as-is.
  *
  * Extends `A11yCoreBuilderBase` (from `a11y-core-binding-base`), which owns
  * every method with no driver-specific work at all -- `include()`/
@@ -103,14 +104,14 @@ const { A11yCoreBuilderBase } = require('@a11y-core/binding-base');
  * with `cy.wrap(...)` when you need one (see ../ROADMAP.md §2e).
  *
  * `analyze()` also writes one `Cypress.log()` entry per fail/cantTell rule
- * plus a trailing summary entry to the Command Log -- parity with
- * `cypress-axe`'s `checkA11y()`, which does the same for axe's violations.
- * See `_logFindings()` below for the full rationale (including why this
- * binding needed it added explicitly, unlike axe where it ships built in).
+ * plus a trailing summary entry to the Command Log, matching the readable
+ * per-violation logging other Cypress accessibility plugins provide out of
+ * the box. See `_logFindings()` below for the full rationale (including why
+ * this binding needed it added explicitly rather than getting it for free).
  *
  * Register your own rule(s) for just this scan with `.withCustomRules()`
- * (a11y-core's `engineOptions.customRules` escape hatch, axe's
- * `configure({ rules })` equivalent -- see a11y-core's docs/ENGINE_OPTIONS.md).
+ * (a11y-core's `engineOptions.customRules` escape hatch -- see a11y-core's
+ * docs/ENGINE_OPTIONS.md).
  *
  * Create one builder per scan. This is a mutable object with no reset
  * between analyze() calls: include()/exclude()/withRules()/disableRules()/
@@ -179,30 +180,29 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
 
   /**
    * Emits Cypress Command Log entries for this result's fail/cantTell
-   * findings -- parity with `cypress-axe`'s `checkA11y()`, which does the
-   * same via its own internal `Cypress.log()` calls (see
-   * `node_modules/cypress-axe/dist/index.js`: a `violations.forEach(...)`
-   * loop logging one `'a11y error!'` entry per rule, `message: '<id> on N
-   * Node(s)'`, followed by an `'a11y violation summary'` entry). Before this
-   * method existed, `analyze()`'s only command-log trace was a bare
-   * `window`/`then` step -- a real, user-noticed gap found by comparing this
-   * project's own `a11y-core.cy.ts` spec side-by-side with `axe.cy.ts` in a
-   * consuming project: axe's Command Log named every violated rule and node
-   * count inline; a11y-core's showed nothing beyond whatever `cy.task(...)`
-   * the test itself happened to add, plus Chai's own truncated `Array(12)`
-   * failure message on assertion failure.
+   * findings -- matching the readable per-violation logging other Cypress
+   * accessibility plugins provide out of the box (one log entry per
+   * violated rule, `message: '<id> on N Node(s)'`, followed by a trailing
+   * summary entry). Before this method existed, `analyze()`'s only
+   * command-log trace was a bare `window`/`then` step -- a real,
+   * user-noticed gap found by comparing this project's own
+   * `a11y-core.cy.ts` spec side-by-side with another accessibility plugin's
+   * spec in a consuming project: that plugin's Command Log named every
+   * violated rule and node count inline; a11y-core's showed nothing beyond
+   * whatever `cy.task(...)` the test itself happened to add, plus Chai's own
+   * truncated `Array(12)` failure message on assertion failure.
    *
    * Named `'a11y-core error!'` / `'a11y-core violation summary'` -- distinct
-   * from axe's exact `'a11y error!'` / `'a11y violation summary'` so the two
-   * are tell-apart-able at a glance in a Command Log where both bindings'
+   * from other plugins' similarly-shaped log entry names so the two are
+   * tell-apart-able at a glance in a Command Log where both bindings'
    * specs run side by side (as they do in at least one consuming project),
    * while staying visually parallel enough to read as "the same kind of
    * thing".
    *
-   * One log entry per RULE, not per occurrence -- like axe's, since a single
-   * rule can flag several elements at once (hence "on N Nodes"). Unlike axe,
-   * a rule can also report zero occurrences: a thrown rule surfaces as
-   * `outcome: 'cantTell'` with `occurrences: []` and `error` set (see
+   * One log entry per RULE, not per occurrence, since a single rule can flag
+   * several elements at once (hence "on N Nodes"). A rule can also report
+   * zero occurrences: a thrown rule surfaces as `outcome: 'cantTell'` with
+   * `occurrences: []` and `error` set (see
    * `../a11y-core/docs/OUTPUT_SCHEMA.md`) -- `formatFailures()` already
    * special-cases this (falls back to `error`/`title` instead of an
    * occurrence-derived message), and this method mirrors that same fallback
@@ -210,13 +210,12 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    *
    * `$el` is resolved with `win.document` as jQuery's context argument
    * (`Cypress.$(selectors, win.document)`), not left to jQuery's default --
-   * axe's own equivalent (`Cypress.$(selectors)`, no context arg) always
-   * resolves against the top AUT document, which would silently
-   * mis-highlight or fail to highlight a sub-frame's own occurrences when
-   * called from `_collectFrames()` below for a `.frames(true)` scan.
+   * an unscoped `Cypress.$(selectors)` call always resolves against the top
+   * AUT document, which would silently mis-highlight or fail to highlight a
+   * sub-frame's own occurrences when called from `_collectFrames()` below
+   * for a `.frames(true)` scan.
    *
-   * Runs unconditionally inside `analyze()` (not opt-in) -- same as
-   * `cypress-axe`, which logs regardless of `skipFailures`. Purely additive
+   * Runs unconditionally inside `analyze()` (not opt-in). Purely additive
    * to the Command Log; never touches the returned result object or throws,
    * so it can't change any existing assertion's pass/fail outcome.
    *

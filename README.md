@@ -44,7 +44,7 @@ it('has no accessibility violations', () => {
 });
 ```
 
-`results` is a11y-core's own native result shape — see [`../a11y-core/docs/OUTPUT_SCHEMA.md`](../a11y-core/docs/OUTPUT_SCHEMA.md) — not axe-core's `violations`/`passes`/`incomplete`/`inapplicable` shape (the format `cypress-axe` uses). The builder's *method names* are modeled on axe-core's `AxeBuilder` (and this package's own sibling bindings) for migration familiarity; the richer result schema is kept as-is.
+`results` is a11y-core's own native result shape — see [`../a11y-core/docs/OUTPUT_SCHEMA.md`](../a11y-core/docs/OUTPUT_SCHEMA.md) — not the `violations`/`passes`/`incomplete`/`inapplicable` shape used by other popular accessibility testing tools for Cypress. The builder's *method names* are modeled on common conventions in this space (and this package's own sibling bindings) for migration familiarity; the richer result schema is kept as-is.
 
 **No `{ page }`/`{ browser }`/`{ driver }` constructor argument**, unlike every sibling binding — there's no such handle in Cypress. `cy` is ambient in every spec file and *is* the driver; `A11yCoreBuilder` calls `cy.window()` itself inside `analyze()`.
 
@@ -63,7 +63,7 @@ See `ROADMAP.md` §2c for why.
 
 Also see `examples/basic-scan.cy.js` for a runnable scan-and-log spec (`npm run example -- --env SCAN_URL=https://example.com/`) and `examples/e2e-test-example.cy.js` for the accessibility-gate pattern below (`npm run example:e2e`).
 
-`withTags()`/`disableRules()` above have counterparts: `.withRules([...])` (only run these specific rule IDs) and `.disableTags([...])` (never run rules carrying any of these tags). All four compose the same way axe's `runOnly`/`disableRules` do, with one non-obvious rule worth knowing: a "disable" always wins over a "with" on the same ID/tag, and combining `.withRules()` **and** `.withTags()` together requires a rule to satisfy *both* (a11y-core's default `includeMode: 'and'` — see `../a11y-core/docs/ENGINE_OPTIONS.md`), not either one.
+`withTags()`/`disableRules()` above have counterparts: `.withRules([...])` (only run these specific rule IDs) and `.disableTags([...])` (never run rules carrying any of these tags). All four compose the same way similar allow/deny-list options do in other accessibility testing tools, with one non-obvious rule worth knowing: a "disable" always wins over a "with" on the same ID/tag, and combining `.withRules()` **and** `.withTags()` together requires a rule to satisfy *both* (a11y-core's default `includeMode: 'and'` — see `../a11y-core/docs/ENGINE_OPTIONS.md`), not either one.
 
 **Create one builder per scan.** `A11yCoreBuilder` is a mutable object with no reset between `.analyze()` calls — `include()`/`exclude()`/`withRules()`/`disableRules()`/`withTags()`/`disableTags()`/`options()`/`withCustomRules()` all push onto or merge into internal state that persists for the instance's lifetime. Calling one of them again before a second `.analyze()` call *accumulates* on top of the first scan's scope rather than replacing it (this is exactly what makes "call `.include()` several times for one scan," above, work — the same accumulation just also applies across separate scans if you reuse an instance). `.reportOnly()`/`.frames()`/`.elementRef()` are the exception: each call replaces the previous value instead of merging with it.
 
@@ -97,7 +97,7 @@ AssertionError: 1) a11ycore-button-name-present (serious): This button has no ac
 
 Deliberately a plain function, not a custom Cypress/Chai assertion — no dependency on any particular assertion library. Defaults to `fail`/`cantTell` outcomes (the only two that ever carry occurrences); pass `{ outcomes: [...] }` to narrow further. A thrown rule (`occurrences: []`, `error` set — see `../a11y-core/docs/OUTPUT_SCHEMA.md`) is still surfaced using its `error` message rather than silently dropped.
 
-### Command Log entries, automatically — parity with `cypress-axe`
+### Command Log entries, automatically
 
 Every `.analyze()` call also writes straight to the Cypress Command Log, with no opt-in needed: one entry per fail/cantTell rule, plus a trailing summary, e.g.
 
@@ -109,7 +109,7 @@ a11y-core violation summary   2 accessibility issues were detected
 
 Click any `a11y-core error!` row to highlight the flagged element(s) in the app preview (`$el`, resolved via the occurrences' selectors), and its `consoleProps` (open the browser DevTools console after clicking the row) prints the full check object — `ruleId`/`severity`/`occurrences`/etc.
 
-This exists specifically to match `cypress-axe`'s `checkA11y()`, which does the same thing for axe's violations via its own internal `Cypress.log()` calls — before this was added, `.analyze()`'s only Command Log trace was a bare `window`/`then` step, noticeably less informative side-by-side with an axe-based spec testing the same page (found by exactly that side-by-side comparison in a consuming project). Entries are named `'a11y-core error!'`/`'a11y-core violation summary'` — distinguishable from axe's own `'a11y error!'`/`'a11y violation summary'` at a glance when both bindings' specs run in the same suite, while staying visually parallel enough to read as the same kind of thing.
+This exists to give failing scans a readable, per-rule Command Log trace — before this was added, `.analyze()`'s only Command Log trace was a bare `window`/`then` step, noticeably less informative side-by-side with another accessibility plugin's spec testing the same page (found by exactly that side-by-side comparison in a consuming project). Entries are named `'a11y-core error!'`/`'a11y-core violation summary'` — distinguishable from similarly-named entries other accessibility plugins produce at a glance when multiple specs run in the same suite, while staying visually parallel enough to read as the same kind of thing.
 
 Purely additive to the Command Log — it never touches the value `.analyze()` resolves to, so it can't change any assertion's pass/fail outcome, and there's nothing to configure or disable. Combines with `.frames(true)`: each sub-frame's own findings are logged separately, scoped to that frame's own document (not the top page's).
 

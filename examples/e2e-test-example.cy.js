@@ -16,8 +16,8 @@ describe('accessibility gate example', () => {
 
     new A11yCoreBuilder().reportOnly(['fail']).analyze().then((results) => {
       const failedRuleIds = results.checksResults.map((r) => r.ruleId);
-      expect(failedRuleIds).to.include('a11ycore-img-alt-present');
-      expect(failedRuleIds).to.include('a11ycore-button-name-present');
+      expect(failedRuleIds).to.include('img-alt-present');
+      expect(failedRuleIds).to.include('button-name-present');
     });
   });
 

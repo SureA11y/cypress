@@ -38,7 +38,7 @@ const SECOND_CUSTOM_RULE = {
 };
 
 // Exercises the optional `applicability` field. When applicability returns
-// false, a11y-core reports 'notApplicable' WITHOUT ever invoking runInPage;
+// false, a11y-labs reports 'notApplicable' WITHOUT ever invoking runInPage;
 // runInPage here always reports 'pass' so the two outcomes are unambiguous
 // proof of which path ran.
 const CUSTOM_RULE_WITH_APPLICABILITY = {
@@ -53,7 +53,7 @@ const CUSTOM_RULE_WITH_APPLICABILITY = {
 };
 
 describe('A11yCoreBuilder', () => {
-  it('analyze() scans the AUT and returns a11y-core\'s native result shape -- not the Cypress runner\'s own chrome', () => {
+  it('analyze() scans the AUT and returns a11y-labs\'s native result shape -- not the Cypress runner\'s own chrome', () => {
     cy.visit('cypress/fixtures/basic.html');
 
     new A11yCoreBuilder().analyze().then((results) => {
@@ -64,8 +64,8 @@ describe('A11yCoreBuilder', () => {
       expect(results.title).to.equal('basic scan fixture');
 
       const fails = results.checksResults.filter((r) => r.outcome === 'fail');
-      expect(fails.some((r) => r.ruleId === 'a11ycore-button-name-present')).to.be.true;
-      expect(fails.some((r) => r.ruleId === 'a11ycore-img-alt-present')).to.be.true;
+      expect(fails.some((r) => r.ruleId === 'button-name-present')).to.be.true;
+      expect(fails.some((r) => r.ruleId === 'img-alt-present')).to.be.true;
     });
   });
 
@@ -73,7 +73,7 @@ describe('A11yCoreBuilder', () => {
     cy.visit('cypress/fixtures/regions-scope-b-pass.html');
 
     new A11yCoreBuilder().include('#b').analyze().then((results) => {
-      const rule = results.checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+      const rule = results.checksResults.find((r) => r.ruleId === 'img-alt-present');
       expect(rule.outcome).to.equal('pass');
     });
   });
@@ -82,7 +82,7 @@ describe('A11yCoreBuilder', () => {
     cy.visit('cypress/fixtures/regions-union-two.html');
 
     new A11yCoreBuilder().include('#a').include('#b').analyze().then((results) => {
-      const rule = results.checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+      const rule = results.checksResults.find((r) => r.ruleId === 'img-alt-present');
       expect(rule.outcome).to.equal('fail');
       expect(rule.occurrences).to.have.length(2); // #a and #b's images, not #c's
     });
@@ -98,11 +98,11 @@ describe('A11yCoreBuilder', () => {
     // known, tested behavior. See README.md's own note.
     const builder = new A11yCoreBuilder();
     builder.include('#a').analyze().then((first) => {
-      const firstRule = first.checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+      const firstRule = first.checksResults.find((r) => r.ruleId === 'img-alt-present');
       expect(firstRule.occurrences.map((o) => o.selector)).to.deep.equal(['#a > img']);
 
       builder.include('#b').analyze().then((second) => { // scope is now #a AND #b, not just #b
-        const secondRule = second.checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+        const secondRule = second.checksResults.find((r) => r.ruleId === 'img-alt-present');
         expect(secondRule.occurrences.map((o) => o.selector)).to.deep.equal(['#a > img', '#b > img']);
       });
     });
@@ -126,7 +126,7 @@ describe('A11yCoreBuilder', () => {
     cy.visit('cypress/fixtures/exclude.html');
 
     new A11yCoreBuilder().exclude('#excluded').analyze().then((results) => {
-      const rule = results.checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+      const rule = results.checksResults.find((r) => r.ruleId === 'img-alt-present');
       expect(rule.outcome).to.equal('pass');
     });
   });
@@ -135,7 +135,7 @@ describe('A11yCoreBuilder', () => {
     cy.visit('cypress/fixtures/include-exclude-combined.html');
 
     new A11yCoreBuilder().include('#scope').exclude('#excluded').analyze().then((results) => {
-      const rule = results.checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+      const rule = results.checksResults.find((r) => r.ruleId === 'img-alt-present');
       expect(rule.outcome).to.equal('fail');
       expect(rule.occurrences.map((o) => o.selector)).to.deep.equal(['#scope > img']);
     });
@@ -144,8 +144,8 @@ describe('A11yCoreBuilder', () => {
   it('disableRules() removes a rule from the result entirely', () => {
     cy.visit('cypress/fixtures/basic.html');
 
-    new A11yCoreBuilder().disableRules(['a11ycore-button-name-present']).analyze().then((results) => {
-      const rule = results.checksResults.find((r) => r.ruleId === 'a11ycore-button-name-present');
+    new A11yCoreBuilder().disableRules(['button-name-present']).analyze().then((results) => {
+      const rule = results.checksResults.find((r) => r.ruleId === 'button-name-present');
       expect(rule).to.be.undefined;
     });
   });
@@ -153,22 +153,22 @@ describe('A11yCoreBuilder', () => {
   it('withRules() only runs the given rule IDs', () => {
     cy.visit('cypress/fixtures/basic.html');
 
-    new A11yCoreBuilder().withRules(['a11ycore-img-alt-present']).analyze().then((results) => {
-      expect(results.checksResults.map((r) => r.ruleId)).to.deep.equal(['a11ycore-img-alt-present']);
+    new A11yCoreBuilder().withRules(['img-alt-present']).analyze().then((results) => {
+      expect(results.checksResults.map((r) => r.ruleId)).to.deep.equal(['img-alt-present']);
     });
   });
 
   it('withRules() and disableRules() combined on the same rule ID -- disableRules wins', () => {
     cy.visit('cypress/fixtures/basic.html');
 
-    // a11y-core applies excludeRuleIds *after* includeRuleIds (see
-    // ../a11y-core/docs/ENGINE_OPTIONS.md).
+    // a11y-labs applies excludeRuleIds *after* includeRuleIds (see
+    // ../a11y-labs/docs/ENGINE_OPTIONS.md).
     new A11yCoreBuilder()
-      .withRules(['a11ycore-img-alt-present', 'a11ycore-button-name-present'])
-      .disableRules(['a11ycore-img-alt-present'])
+      .withRules(['img-alt-present', 'button-name-present'])
+      .disableRules(['img-alt-present'])
       .analyze()
       .then((results) => {
-        expect(results.checksResults.map((r) => r.ruleId)).to.deep.equal(['a11ycore-button-name-present']);
+        expect(results.checksResults.map((r) => r.ruleId)).to.deep.equal(['button-name-present']);
       });
   });
 
@@ -177,7 +177,7 @@ describe('A11yCoreBuilder', () => {
 
     // button-name-present carries wcag412 -- disabling that tag removes it.
     new A11yCoreBuilder().disableTags(['wcag412']).analyze().then((results) => {
-      expect(results.checksResults.some((r) => r.ruleId === 'a11ycore-button-name-present')).to.be.false;
+      expect(results.checksResults.some((r) => r.ruleId === 'button-name-present')).to.be.false;
     });
   });
 
@@ -186,7 +186,7 @@ describe('A11yCoreBuilder', () => {
 
     new A11yCoreBuilder().withTags(['wcag412']).analyze().then((results) => {
       expect(results.checksResults.length).to.be.greaterThan(0);
-      expect(results.checksResults.some((r) => r.ruleId === 'a11ycore-button-name-present')).to.be.true;
+      expect(results.checksResults.some((r) => r.ruleId === 'button-name-present')).to.be.true;
     });
   });
 
@@ -198,14 +198,14 @@ describe('A11yCoreBuilder', () => {
     });
   });
 
-  it('withRules() and withTags() combined require BOTH to match (a11y-core\'s default "and" includeMode)', () => {
+  it('withRules() and withTags() combined require BOTH to match (a11y-labs\'s default "and" includeMode)', () => {
     cy.visit('cypress/fixtures/basic.html');
 
     // img-alt-present doesn't carry wcag412, so this combination yields
     // nothing even though img-alt-present alone matches withRules() and
     // button-name-present alone matches wcag412.
     new A11yCoreBuilder()
-      .withRules(['a11ycore-img-alt-present'])
+      .withRules(['img-alt-present'])
       .withTags(['wcag412'])
       .analyze()
       .then((results) => {
@@ -217,15 +217,15 @@ describe('A11yCoreBuilder', () => {
     cy.visit('cypress/fixtures/basic.html');
 
     new A11yCoreBuilder().options({ locale: 'fr' }).analyze().then((results) => {
-      const rule = results.checksResults.find((r) => r.ruleId === 'a11ycore-button-name-present');
+      const rule = results.checksResults.find((r) => r.ruleId === 'button-name-present');
       expect(rule, 'button-name-present should be present in the result').to.exist;
       // Each result echoes back the *resolved* engineOptions it actually ran
-      // under (see a11y-core's docs/OUTPUT_SCHEMA.md).
+      // under (see a11y-labs's docs/OUTPUT_SCHEMA.md).
       expect(rule.engineOptions.locale).to.equal('fr');
     });
   });
 
-  it('options({ customRules }) registers a runtime custom rule via a11y-core\'s engineOptions passthrough', () => {
+  it('options({ customRules }) registers a runtime custom rule via a11y-labs\'s engineOptions passthrough', () => {
     cy.visit('cypress/fixtures/custom-widget-single.html');
 
     new A11yCoreBuilder().options({ customRules: [MY_ORG_CUSTOM_RULE] }).analyze().then((results) => {
@@ -342,7 +342,7 @@ describe('A11yCoreBuilder', () => {
     new A11yCoreBuilder().reportOnly(['fail']).analyze().then((results) => {
       expect(results.checksResults.length).to.be.greaterThan(0);
       expect(results.checksResults.every((r) => r.outcome === 'fail')).to.be.true;
-      expect(results.checksResults.some((r) => r.ruleId === 'a11ycore-button-name-present')).to.be.true;
+      expect(results.checksResults.some((r) => r.ruleId === 'button-name-present')).to.be.true;
     });
   });
 
@@ -354,7 +354,7 @@ describe('A11yCoreBuilder', () => {
     cy.visit('cypress/fixtures/basic.html');
 
     new A11yCoreBuilder().elementRef(true).analyze().then((results) => {
-      const rule = results.checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+      const rule = results.checksResults.find((r) => r.ruleId === 'img-alt-present');
       expect(rule.outcome).to.equal('fail');
       const [occurrence] = rule.occurrences;
       expect(occurrence.element, 'occurrence should carry a live Element').to.exist;
@@ -370,7 +370,7 @@ describe('A11yCoreBuilder', () => {
 
     new A11yCoreBuilder().reportOnly(['fail']).elementRef(true).analyze().then((results) => {
       expect(results.checksResults.every((r) => r.outcome === 'fail')).to.be.true;
-      const rule = results.checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+      const rule = results.checksResults.find((r) => r.ruleId === 'img-alt-present');
       expect(rule.occurrences[0].element.id).to.equal('pic');
     });
   });
@@ -378,13 +378,13 @@ describe('A11yCoreBuilder', () => {
   it('elementRef(true) leaves element null for an occurrence with no resolvable selector, instead of throwing', () => {
     cy.visit('cypress/fixtures/manual-rule-only.html');
 
-    // a11ycore-contrast-enhanced can report a page-wide occurrence with
+    // contrast-enhanced can report a page-wide occurrence with
     // selector: "" (no single target element) -- confirms .elementRef(true)
     // doesn't crash calling querySelector("") on it (an invalid CSS
     // selector) and instead leaves element null.
     new A11yCoreBuilder().elementRef(true).analyze().then((results) => {
-      const rule = results.checksResults.find((r) => r.ruleId === 'a11ycore-contrast-enhanced');
-      expect(rule, 'expected a11ycore-contrast-enhanced to be present on this fixture').to.exist;
+      const rule = results.checksResults.find((r) => r.ruleId === 'contrast-enhanced');
+      expect(rule, 'expected contrast-enhanced to be present on this fixture').to.exist;
       const occurrence = rule.occurrences.find((o) => o.selector === '');
       expect(occurrence, 'expected an occurrence with an empty selector on this page').to.exist;
       expect(occurrence.element).to.equal(null);
@@ -396,7 +396,7 @@ describe('A11yCoreBuilder', () => {
 
     new A11yCoreBuilder().frames(true).analyze().then((results) => {
       expect(results.topFrame.checksResults).to.be.an('array');
-      expect(results.topFrame.checksResults.some((r) => r.ruleId === 'a11ycore-button-name-present' && r.outcome === 'fail')).to.be.true;
+      expect(results.topFrame.checksResults.some((r) => r.ruleId === 'button-name-present' && r.outcome === 'fail')).to.be.true;
       expect(results.frames).to.deep.equal([]);
     });
   });
@@ -405,11 +405,11 @@ describe('A11yCoreBuilder', () => {
     cy.visit('cypress/fixtures/frame-parent-same-origin.html');
 
     new A11yCoreBuilder().frames(true).analyze().then((results) => {
-      const topButtonRule = results.topFrame.checksResults.find((r) => r.ruleId === 'a11ycore-button-name-present');
+      const topButtonRule = results.topFrame.checksResults.find((r) => r.ruleId === 'button-name-present');
       expect(topButtonRule.outcome).to.equal('pass'); // top button has real text
 
       expect(results.frames).to.have.length(1);
-      const frameImgRule = results.frames[0].checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+      const frameImgRule = results.frames[0].checksResults.find((r) => r.ruleId === 'img-alt-present');
       expect(frameImgRule.outcome).to.equal('fail');
       expect(results.frames[0].title).to.equal('frame child (same-origin)');
     });
@@ -424,8 +424,8 @@ describe('A11yCoreBuilder', () => {
       const grandchildResult = results.frames.find((f) => f.title === 'nested frames -- grandchild');
       expect(childResult, 'child frame result should be present').to.exist;
       expect(grandchildResult, 'grandchild frame result should be present').to.exist;
-      expect(childResult.checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present').outcome).to.equal('fail');
-      expect(grandchildResult.checksResults.find((r) => r.ruleId === 'a11ycore-button-name-present').outcome).to.equal('fail');
+      expect(childResult.checksResults.find((r) => r.ruleId === 'img-alt-present').outcome).to.equal('fail');
+      expect(grandchildResult.checksResults.find((r) => r.ruleId === 'button-name-present').outcome).to.equal('fail');
     });
   });
 
@@ -467,7 +467,7 @@ describe('A11yCoreBuilder', () => {
     new A11yCoreBuilder().frames(true).reportOnly(['fail']).analyze().then((results) => {
       expect(results.topFrame.checksResults.every((r) => r.outcome === 'fail')).to.be.true;
       expect(results.frames[0].checksResults.every((r) => r.outcome === 'fail')).to.be.true;
-      expect(results.frames[0].checksResults.some((r) => r.ruleId === 'a11ycore-img-alt-present')).to.be.true;
+      expect(results.frames[0].checksResults.some((r) => r.ruleId === 'img-alt-present')).to.be.true;
     });
   });
 
@@ -475,7 +475,7 @@ describe('A11yCoreBuilder', () => {
     cy.visit('cypress/fixtures/frame-parent-same-origin.html');
 
     new A11yCoreBuilder().frames(true).elementRef(true).analyze().then((results) => {
-      const rule = results.frames[0].checksResults.find((r) => r.ruleId === 'a11ycore-img-alt-present');
+      const rule = results.frames[0].checksResults.find((r) => r.ruleId === 'img-alt-present');
       expect(rule.outcome).to.equal('fail');
       expect(rule.occurrences[0].element.id).to.equal('inner');
     });
@@ -486,9 +486,9 @@ describe('A11yCoreBuilder', () => {
 
     new A11yCoreBuilder().reportOnly(['fail']).analyze().then((results) => {
       const output = formatFailures(results.checksResults);
-      expect(output).to.include('a11ycore-img-alt-present');
-      expect(output).to.include('a11ycore-button-name-present');
-      expect(output).to.include('#pic'); // a11y-core prefers an ID selector when the element has one
+      expect(output).to.include('img-alt-present');
+      expect(output).to.include('button-name-present');
+      expect(output).to.include('#pic'); // a11y-labs prefers an ID selector when the element has one
     });
   });
 
@@ -496,7 +496,7 @@ describe('A11yCoreBuilder', () => {
   // full rationale (why this was added, why the log names are what they are,
   // why it isn't ported to the sibling bindings).
   describe('Cypress.log() Command Log entries (../ROADMAP.md §9)', () => {
-    it('analyze() logs one \'a11y-core error!\' entry per fail rule plus a trailing summary entry', () => {
+    it('analyze() logs one \'a11y-labs error!\' entry per fail rule plus a trailing summary entry', () => {
       cy.visit('cypress/fixtures/basic.html');
       const logSpy = cy.spy(Cypress, 'log').log(false); // .log(false): don't recursively log the spy's own invocations
 
@@ -512,14 +512,14 @@ describe('A11yCoreBuilder', () => {
         // bypass-blocks-present (no skip link).
         expect(results.checksResults, 'sanity check: basic.html has known fails').to.have.length(3);
 
-        const errorCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-core error!');
-        const summaryCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-core violation summary');
+        const errorCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-labs error!');
+        const summaryCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-labs violation summary');
 
         expect(errorCalls, 'one log entry per fail rule').to.have.length(3);
         expect(errorCalls.map((c) => c.args[0].message)).to.include.members([
-          'a11ycore-button-name-present (serious): on 1 Node',
-          'a11ycore-img-alt-present (serious): on 1 Node',
-          'a11ycore-bypass-blocks-present (serious): on 1 Node',
+          'button-name-present (serious): on 1 Node',
+          'img-alt-present (serious): on 1 Node',
+          'bypass-blocks-present (serious): on 1 Node',
         ]);
 
         expect(summaryCalls, 'exactly one trailing summary entry').to.have.length(1);
@@ -540,8 +540,8 @@ describe('A11yCoreBuilder', () => {
       // 'fail', not 'cantTell'.
       new A11yCoreBuilder().reportOnly(['fail']).analyze().then((results) => {
         expect(results.checksResults, 'sanity check: well-formed.html has no fails').to.have.length(0);
-        expect(logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-core error!')).to.have.length(0);
-        expect(logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-core violation summary')).to.have.length(0);
+        expect(logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-labs error!')).to.have.length(0);
+        expect(logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-labs violation summary')).to.have.length(0);
       });
     });
 
@@ -550,11 +550,11 @@ describe('A11yCoreBuilder', () => {
       const logSpy = cy.spy(Cypress, 'log').log(false);
 
       new A11yCoreBuilder().frames(true).analyze().then(() => {
-        const errorCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-core error!');
+        const errorCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-labs error!');
         // Top frame's own button has real text (passes); only the child
         // frame's img-alt-present should have logged.
-        expect(errorCalls.some((c) => c.args[0].message.startsWith('a11ycore-img-alt-present'))).to.be.true;
-        expect(errorCalls.some((c) => c.args[0].message.startsWith('a11ycore-button-name-present'))).to.be.false;
+        expect(errorCalls.some((c) => c.args[0].message.startsWith('img-alt-present'))).to.be.true;
+        expect(errorCalls.some((c) => c.args[0].message.startsWith('button-name-present'))).to.be.false;
       });
     });
   });

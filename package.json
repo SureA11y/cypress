@@ -1,18 +1,18 @@
 {
-  "name": "@a11y-labs/cypress",
+  "name": "@surea11y/cypress",
   "version": "0.1.0",
-  "description": "Cypress binding for a11y-labs -- scan real, live-rendered pages for accessibility issues.",
+  "description": "Cypress binding for surea11y -- scan real, live-rendered pages for accessibility issues.",
   "main": "src/index.js",
   "types": "src/index.d.ts",
   "author": "Jorge Rumoroso",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rumoroso/a11y-labs-core-cypress.git"
+    "url": "git+https://github.com/rumoroso/surea11y-core-cypress.git"
   },
-  "homepage": "https://github.com/rumoroso/a11y-labs-core-cypress#readme",
+  "homepage": "https://github.com/rumoroso/surea11y-core-cypress#readme",
   "bugs": {
-    "url": "https://github.com/rumoroso/a11y-labs-core-cypress/issues"
+    "url": "https://github.com/rumoroso/surea11y-core-cypress/issues"
   },
   "engines": {
     "node": ">=18.13.0"
@@ -26,8 +26,8 @@
     "LICENSE"
   ],
   "dependencies": {
-    "@a11y-labs/binding-base": "^0.1.0",
-    "@a11y-labs/core": "^1.1.0"
+    "@surea11y/binding-base": "^0.1.0",
+    "@surea11y/core": "^1.1.0"
   },
   "peerDependencies": {
     "cypress": ">=13.0.0"

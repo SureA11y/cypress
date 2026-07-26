@@ -38,7 +38,7 @@ const SECOND_CUSTOM_RULE = {
 };
 
 // Exercises the optional `applicability` field. When applicability returns
-// false, a11y-labs reports 'notApplicable' WITHOUT ever invoking runInPage;
+// false, surea11y reports 'notApplicable' WITHOUT ever invoking runInPage;
 // runInPage here always reports 'pass' so the two outcomes are unambiguous
 // proof of which path ran.
 const CUSTOM_RULE_WITH_APPLICABILITY = {
@@ -53,7 +53,7 @@ const CUSTOM_RULE_WITH_APPLICABILITY = {
 };
 
 describe('A11yCoreBuilder', () => {
-  it('analyze() scans the AUT and returns a11y-labs\'s native result shape -- not the Cypress runner\'s own chrome', () => {
+  it('analyze() scans the AUT and returns surea11y\'s native result shape -- not the Cypress runner\'s own chrome', () => {
     cy.visit('cypress/fixtures/basic.html');
 
     new A11yCoreBuilder().analyze().then((results) => {
@@ -161,8 +161,8 @@ describe('A11yCoreBuilder', () => {
   it('withRules() and disableRules() combined on the same rule ID -- disableRules wins', () => {
     cy.visit('cypress/fixtures/basic.html');
 
-    // a11y-labs applies excludeRuleIds *after* includeRuleIds (see
-    // ../a11y-labs/docs/ENGINE_OPTIONS.md).
+    // surea11y applies excludeRuleIds *after* includeRuleIds (see
+    // ../surea11y/docs/ENGINE_OPTIONS.md).
     new A11yCoreBuilder()
       .withRules(['img-alt-present', 'button-name-present'])
       .disableRules(['img-alt-present'])
@@ -198,7 +198,7 @@ describe('A11yCoreBuilder', () => {
     });
   });
 
-  it('withRules() and withTags() combined require BOTH to match (a11y-labs\'s default "and" includeMode)', () => {
+  it('withRules() and withTags() combined require BOTH to match (surea11y\'s default "and" includeMode)', () => {
     cy.visit('cypress/fixtures/basic.html');
 
     // img-alt-present doesn't carry wcag412, so this combination yields
@@ -220,12 +220,12 @@ describe('A11yCoreBuilder', () => {
       const rule = results.checksResults.find((r) => r.ruleId === 'button-name-present');
       expect(rule, 'button-name-present should be present in the result').to.exist;
       // Each result echoes back the *resolved* engineOptions it actually ran
-      // under (see a11y-labs's docs/OUTPUT_SCHEMA.md).
+      // under (see surea11y's docs/OUTPUT_SCHEMA.md).
       expect(rule.engineOptions.locale).to.equal('fr');
     });
   });
 
-  it('options({ customRules }) registers a runtime custom rule via a11y-labs\'s engineOptions passthrough', () => {
+  it('options({ customRules }) registers a runtime custom rule via surea11y\'s engineOptions passthrough', () => {
     cy.visit('cypress/fixtures/custom-widget-single.html');
 
     new A11yCoreBuilder().options({ customRules: [MY_ORG_CUSTOM_RULE] }).analyze().then((results) => {
@@ -488,7 +488,7 @@ describe('A11yCoreBuilder', () => {
       const output = formatFailures(results.checksResults);
       expect(output).to.include('img-alt-present');
       expect(output).to.include('button-name-present');
-      expect(output).to.include('#pic'); // a11y-labs prefers an ID selector when the element has one
+      expect(output).to.include('#pic'); // surea11y prefers an ID selector when the element has one
     });
   });
 
@@ -496,7 +496,7 @@ describe('A11yCoreBuilder', () => {
   // full rationale (why this was added, why the log names are what they are,
   // why it isn't ported to the sibling bindings).
   describe('Cypress.log() Command Log entries (../ROADMAP.md §9)', () => {
-    it('analyze() logs one \'a11y-labs error!\' entry per fail rule plus a trailing summary entry', () => {
+    it('analyze() logs one \'surea11y error!\' entry per fail rule plus a trailing summary entry', () => {
       cy.visit('cypress/fixtures/basic.html');
       const logSpy = cy.spy(Cypress, 'log').log(false); // .log(false): don't recursively log the spy's own invocations
 
@@ -512,8 +512,8 @@ describe('A11yCoreBuilder', () => {
         // bypass-blocks-present (no skip link).
         expect(results.checksResults, 'sanity check: basic.html has known fails').to.have.length(3);
 
-        const errorCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-labs error!');
-        const summaryCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-labs violation summary');
+        const errorCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'surea11y error!');
+        const summaryCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'surea11y violation summary');
 
         expect(errorCalls, 'one log entry per fail rule').to.have.length(3);
         expect(errorCalls.map((c) => c.args[0].message)).to.include.members([
@@ -540,8 +540,8 @@ describe('A11yCoreBuilder', () => {
       // 'fail', not 'cantTell'.
       new A11yCoreBuilder().reportOnly(['fail']).analyze().then((results) => {
         expect(results.checksResults, 'sanity check: well-formed.html has no fails').to.have.length(0);
-        expect(logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-labs error!')).to.have.length(0);
-        expect(logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-labs violation summary')).to.have.length(0);
+        expect(logSpy.getCalls().filter((c) => c.args[0].name === 'surea11y error!')).to.have.length(0);
+        expect(logSpy.getCalls().filter((c) => c.args[0].name === 'surea11y violation summary')).to.have.length(0);
       });
     });
 
@@ -550,7 +550,7 @@ describe('A11yCoreBuilder', () => {
       const logSpy = cy.spy(Cypress, 'log').log(false);
 
       new A11yCoreBuilder().frames(true).analyze().then(() => {
-        const errorCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'a11y-labs error!');
+        const errorCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'surea11y error!');
         // Top frame's own button has real text (passes); only the child
         // frame's img-alt-present should have logged.
         expect(errorCalls.some((c) => c.args[0].message.startsWith('img-alt-present'))).to.be.true;

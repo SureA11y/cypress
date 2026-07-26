@@ -15,7 +15,7 @@ module.exports = defineConfig({
     video: false,
     screenshotOnRunFailure: false,
     setupNodeEvents(on) {
-      // @a11y-labs/core and @a11y-labs/binding-base are `file:../...`
+      // @surea11y/core and @surea11y/binding-base are `file:../...`
       // dependencies, installed as symlinks into node_modules (this is a
       // multi-package repo -- see ../ROADMAP.md §3). Webpack resolves
       // symlinks to their real, out-of-node_modules path by default, which

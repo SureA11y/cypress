@@ -1,18 +1,18 @@
-# a11y-labs-cypress
+# surea11y-cypress
 
-A Cypress binding for [`a11y-labs`](../a11y-labs) — scans a real, already-rendered page for accessibility issues using a11y-labs's DOM-rules engine.
+A Cypress binding for [`surea11y`](../surea11y) — scans a real, already-rendered page for accessibility issues using surea11y's DOM-rules engine.
 
-This is a **separate project/package** from `a11y-labs` and its sibling bindings ([`a11y-labs-playwright`](../a11y-labs-playwright), [`a11y-labs-puppeteer`](../a11y-labs-puppeteer), [`a11y-labs-selenium`](../a11y-labs-selenium), [`a11y-labs-webdriverio`](../a11y-labs-webdriverio)), kept as its own sibling directory — see `ROADMAP.md` §1 for the reasoning (same reasoning every sibling binding already used).
+This is a **separate project/package** from `surea11y` and its sibling bindings ([`surea11y-playwright`](../surea11y-playwright), [`surea11y-puppeteer`](../surea11y-puppeteer), [`surea11y-selenium`](../surea11y-selenium), [`surea11y-webdriverio`](../surea11y-webdriverio)), kept as its own sibling directory — see `ROADMAP.md` §1 for the reasoning (same reasoning every sibling binding already used).
 
 ## Install (local development)
 
-`a11y-labs` isn't published to npm yet, so this package depends on it via a relative `file:` path (see `package.json`):
+`surea11y` isn't published to npm yet, so this package depends on it via a relative `file:` path (see `package.json`):
 
 ```json
-"dependencies": { "@a11y-labs/core": "file:../core" }
+"dependencies": { "@surea11y/core": "file:../core" }
 ```
 
-That means this project must stay a sibling of `a11y-labs` (or you update the path) for `npm install`/`yarn install` to resolve it.
+That means this project must stay a sibling of `surea11y` (or you update the path) for `npm install`/`yarn install` to resolve it.
 
 ```bash
 yarn install   # or npm install
@@ -25,7 +25,7 @@ npm test
 
 ```js
 // cypress/e2e/my-page.cy.js
-const { A11yCoreBuilder } = require('a11y-labs-cypress');
+const { A11yCoreBuilder } = require('surea11y-cypress');
 
 it('has no accessibility violations', () => {
   cy.visit('https://example.com/');
@@ -44,7 +44,7 @@ it('has no accessibility violations', () => {
 });
 ```
 
-`results` is a11y-labs's own native result shape — see [`../a11y-labs/docs/OUTPUT_SCHEMA.md`](../a11y-labs/docs/OUTPUT_SCHEMA.md) — not the `violations`/`passes`/`incomplete`/`inapplicable` shape used by other popular accessibility testing tools for Cypress. The builder's *method names* are modeled on common conventions in this space (and this package's own sibling bindings) for migration familiarity; the richer result schema is kept as-is.
+`results` is surea11y's own native result shape — see [`../surea11y/docs/OUTPUT_SCHEMA.md`](../surea11y/docs/OUTPUT_SCHEMA.md) — not the `violations`/`passes`/`incomplete`/`inapplicable` shape used by other popular accessibility testing tools for Cypress. The builder's *method names* are modeled on common conventions in this space (and this package's own sibling bindings) for migration familiarity; the richer result schema is kept as-is.
 
 **No `{ page }`/`{ browser }`/`{ driver }` constructor argument**, unlike every sibling binding — there's no such handle in Cypress. `cy` is ambient in every spec file and *is* the driver; `A11yCoreBuilder` calls `cy.window()` itself inside `analyze()`.
 
@@ -63,14 +63,14 @@ See `ROADMAP.md` §2c for why.
 
 Also see `examples/basic-scan.cy.js` for a runnable scan-and-log spec (`npm run example -- --env SCAN_URL=https://example.com/`) and `examples/e2e-test-example.cy.js` for the accessibility-gate pattern below (`npm run example:e2e`).
 
-`withTags()`/`disableRules()` above have counterparts: `.withRules([...])` (only run these specific rule IDs) and `.disableTags([...])` (never run rules carrying any of these tags). All four compose the same way similar allow/deny-list options do in other accessibility testing tools, with one non-obvious rule worth knowing: a "disable" always wins over a "with" on the same ID/tag, and combining `.withRules()` **and** `.withTags()` together requires a rule to satisfy *both* (a11y-labs's default `includeMode: 'and'` — see `../a11y-labs/docs/ENGINE_OPTIONS.md`), not either one.
+`withTags()`/`disableRules()` above have counterparts: `.withRules([...])` (only run these specific rule IDs) and `.disableTags([...])` (never run rules carrying any of these tags). All four compose the same way similar allow/deny-list options do in other accessibility testing tools, with one non-obvious rule worth knowing: a "disable" always wins over a "with" on the same ID/tag, and combining `.withRules()` **and** `.withTags()` together requires a rule to satisfy *both* (surea11y's default `includeMode: 'and'` — see `../surea11y/docs/ENGINE_OPTIONS.md`), not either one.
 
 **Create one builder per scan.** `A11yCoreBuilder` is a mutable object with no reset between `.analyze()` calls — `include()`/`exclude()`/`withRules()`/`disableRules()`/`withTags()`/`disableTags()`/`options()`/`withCustomRules()` all push onto or merge into internal state that persists for the instance's lifetime. Calling one of them again before a second `.analyze()` call *accumulates* on top of the first scan's scope rather than replacing it (this is exactly what makes "call `.include()` several times for one scan," above, work — the same accumulation just also applies across separate scans if you reuse an instance). `.reportOnly()`/`.frames()`/`.elementRef()` are the exception: each call replaces the previous value instead of merging with it.
 
 ### Using it as an E2E accessibility gate
 
 ```js
-const { A11yCoreBuilder, formatFailures } = require('a11y-labs-cypress');
+const { A11yCoreBuilder, formatFailures } = require('surea11y-cypress');
 
 it('has no accessibility violations', () => {
   cy.visit('https://example.com/');
@@ -95,21 +95,21 @@ AssertionError: 1) button-name-present (serious): This button has no accessible 
 : expected 2 to equal 0
 ```
 
-Deliberately a plain function, not a custom Cypress/Chai assertion — no dependency on any particular assertion library. Defaults to `fail`/`cantTell` outcomes (the only two that ever carry occurrences); pass `{ outcomes: [...] }` to narrow further. A thrown rule (`occurrences: []`, `error` set — see `../a11y-labs/docs/OUTPUT_SCHEMA.md`) is still surfaced using its `error` message rather than silently dropped.
+Deliberately a plain function, not a custom Cypress/Chai assertion — no dependency on any particular assertion library. Defaults to `fail`/`cantTell` outcomes (the only two that ever carry occurrences); pass `{ outcomes: [...] }` to narrow further. A thrown rule (`occurrences: []`, `error` set — see `../surea11y/docs/OUTPUT_SCHEMA.md`) is still surfaced using its `error` message rather than silently dropped.
 
 ### Command Log entries, automatically
 
 Every `.analyze()` call also writes straight to the Cypress Command Log, with no opt-in needed: one entry per fail/cantTell rule, plus a trailing summary, e.g.
 
 ```
-a11y-labs error!  button-name-present (serious): on 1 Node
-a11y-labs error!  img-alt-present (serious): on 1 Node
-a11y-labs violation summary   2 accessibility issues were detected
+surea11y error!  button-name-present (serious): on 1 Node
+surea11y error!  img-alt-present (serious): on 1 Node
+surea11y violation summary   2 accessibility issues were detected
 ```
 
-Click any `a11y-labs error!` row to highlight the flagged element(s) in the app preview (`$el`, resolved via the occurrences' selectors), and its `consoleProps` (open the browser DevTools console after clicking the row) prints the full check object — `ruleId`/`severity`/`occurrences`/etc.
+Click any `surea11y error!` row to highlight the flagged element(s) in the app preview (`$el`, resolved via the occurrences' selectors), and its `consoleProps` (open the browser DevTools console after clicking the row) prints the full check object — `ruleId`/`severity`/`occurrences`/etc.
 
-This exists to give failing scans a readable, per-rule Command Log trace — before this was added, `.analyze()`'s only Command Log trace was a bare `window`/`then` step, noticeably less informative side-by-side with another accessibility plugin's spec testing the same page (found by exactly that side-by-side comparison in a consuming project). Entries are named `'a11y-labs error!'`/`'a11y-labs violation summary'` — distinguishable from similarly-named entries other accessibility plugins produce at a glance when multiple specs run in the same suite, while staying visually parallel enough to read as the same kind of thing.
+This exists to give failing scans a readable, per-rule Command Log trace — before this was added, `.analyze()`'s only Command Log trace was a bare `window`/`then` step, noticeably less informative side-by-side with another accessibility plugin's spec testing the same page (found by exactly that side-by-side comparison in a consuming project). Entries are named `'surea11y error!'`/`'surea11y violation summary'` — distinguishable from similarly-named entries other accessibility plugins produce at a glance when multiple specs run in the same suite, while staying visually parallel enough to read as the same kind of thing.
 
 Purely additive to the Command Log — it never touches the value `.analyze()` resolves to, so it can't change any assertion's pass/fail outcome, and there's nothing to configure or disable. Combines with `.frames(true)`: each sub-frame's own findings are logged separately, scoped to that frame's own document (not the top page's).
 
@@ -138,7 +138,7 @@ new A11yCoreBuilder().reportOnly(['fail', 'cantTell']).analyze().then((results) 
 });
 ```
 
-By default `analyze()` returns every rule's outcome, including `pass`/`notApplicable` — a11y-labs's own deliberate "not a violations-only list" design (see `../a11y-labs/docs/OUTPUT_SCHEMA.md`). Valid outcome values are `'pass'`, `'fail'`, `'cantTell'`, `'notApplicable'`. Pure binding-layer filtering — a11y-labs itself still computes every rule. Combines with `.frames(true)`: the filter is applied to `results.topFrame` and each entry of `results.frames` independently.
+By default `analyze()` returns every rule's outcome, including `pass`/`notApplicable` — surea11y's own deliberate "not a violations-only list" design (see `../surea11y/docs/OUTPUT_SCHEMA.md`). Valid outcome values are `'pass'`, `'fail'`, `'cantTell'`, `'notApplicable'`. Pure binding-layer filtering — surea11y itself still computes every rule. Combines with `.frames(true)`: the filter is applied to `results.topFrame` and each entry of `results.frames` independently.
 
 ### Getting a live element, not just a selector string
 
@@ -169,7 +169,7 @@ new A11yCoreBuilder()
   .analyze();
 ```
 
-A custom rule descriptor is the same shape as one of a11y-labs's own internal rule modules (`{ id, meta, runInPage, applicability?, data? }`) — see `../a11y-labs/docs/ENGINE_OPTIONS.md` for the full contract. Results appear in `checksResults` exactly like a built-in rule's. Registered per-scan only, and a custom rule whose `id` collides with a built-in one overrides it for that scan.
+A custom rule descriptor is the same shape as one of surea11y's own internal rule modules (`{ id, meta, runInPage, applicability?, data? }`) — see `../surea11y/docs/ENGINE_OPTIONS.md` for the full contract. Results appear in `checksResults` exactly like a built-in rule's. Registered per-scan only, and a custom rule whose `id` collides with a built-in one overrides it for that scan.
 
 Pass an array to register several at once, or call `.withCustomRules()` again to add more — it accumulates rather than replacing:
 
@@ -186,15 +186,15 @@ Invalid input (a missing/empty `id`, or a `runInPage`/`applicability` that's nei
 
 ### Element addressing beyond a CSS selector
 
-Every occurrence already carries `selector` and (with `.elementRef(true)`, above) a live `Element`. It also carries `structuralPath` — a sibling-index path from the document root down to the flagged element (e.g. `[1, 0, 2]`) — a more robust identity than a selector string alone, since it survives some DOM changes a selector wouldn't. No opt-in needed. See `../a11y-labs/docs/OUTPUT_SCHEMA.md` for the full field description.
+Every occurrence already carries `selector` and (with `.elementRef(true)`, above) a live `Element`. It also carries `structuralPath` — a sibling-index path from the document root down to the flagged element (e.g. `[1, 0, 2]`) — a more robust identity than a selector string alone, since it survives some DOM changes a selector wouldn't. No opt-in needed. See `../surea11y/docs/OUTPUT_SCHEMA.md` for the full field description.
 
 ## TypeScript
 
-`src/A11yCoreBuilder.d.ts` (re-exported from `src/index.d.ts`, wired up via `package.json`'s `types` field) ships hand-written types for the whole builder API plus a11y-labs's native result shapes (`A11yCoreResult`, `CheckResult`, `Occurrence`, `CompositeResult`, etc.), mirrored from `../a11y-labs/docs/OUTPUT_SCHEMA.md`. `analyze()` is typed `Cypress.Chainable<A11yCoreResult | A11yCoreMultiFrameResult>` — narrow on `'topFrame' in results` (or cast, if you already know which mode you called) to get the specific shape back.
+`src/A11yCoreBuilder.d.ts` (re-exported from `src/index.d.ts`, wired up via `package.json`'s `types` field) ships hand-written types for the whole builder API plus surea11y's native result shapes (`A11yCoreResult`, `CheckResult`, `Occurrence`, `CompositeResult`, etc.), mirrored from `../surea11y/docs/OUTPUT_SCHEMA.md`. `analyze()` is typed `Cypress.Chainable<A11yCoreResult | A11yCoreMultiFrameResult>` — narrow on `'topFrame' in results` (or cast, if you already know which mode you called) to get the specific shape back.
 
 ## Relationship to the sibling bindings
 
-This binding's builder API is deliberately close to [`a11y-labs-playwright`](../a11y-labs-playwright)'s and [`a11y-labs-puppeteer`](../a11y-labs-puppeteer)'s — same method names, same mutability contract, same result shapes wherever Cypress's own architecture allows it. As of this package's own `ROADMAP.md` §8, that's no longer just convention: `A11yCoreBuilder` here extends `A11yCoreBuilderBase` from [`../a11y-labs-binding-base`](../a11y-labs-binding-base), a small shared package every one of the five bindings now depends on for their common, non-driver-specific logic (`include`/`exclude`/`withTags`/`disableTags`/`withRules`/`disableRules`/`options`/`reportOnly`/`elementRef`/`frames`, `withCustomRules()`'s validation, and `formatFailures()`). The real differences, all driven by Cypress's fundamentally different architecture (test code runs in-browser, not as a separate automation-process driver — see `ROADMAP.md` §1–§2), stay local to this project's own `A11yCoreBuilder.js`:
+This binding's builder API is deliberately close to [`surea11y-playwright`](../surea11y-playwright)'s and [`surea11y-puppeteer`](../surea11y-puppeteer)'s — same method names, same mutability contract, same result shapes wherever Cypress's own architecture allows it. As of this package's own `ROADMAP.md` §8, that's no longer just convention: `A11yCoreBuilder` here extends `A11yCoreBuilderBase` from [`../surea11y-binding-base`](../surea11y-binding-base), a small shared package every one of the five bindings now depends on for their common, non-driver-specific logic (`include`/`exclude`/`withTags`/`disableTags`/`withRules`/`disableRules`/`options`/`reportOnly`/`elementRef`/`frames`, `withCustomRules()`'s validation, and `formatFailures()`). The real differences, all driven by Cypress's fundamentally different architecture (test code runs in-browser, not as a separate automation-process driver — see `ROADMAP.md` §1–§2), stay local to this project's own `A11yCoreBuilder.js`:
 
 - No `{ page }`/`{ browser }`/`{ driver }` constructor argument (§2c/README above).
 - `analyze()` returns a Cypress chainable, not a `Promise` (§2c).
@@ -203,7 +203,7 @@ This binding's builder API is deliberately close to [`a11y-labs-playwright`](../
 - `.frames(true)` cannot reach genuinely cross-origin iframes — an honest, real limitation the other four bindings don't have (§2d).
 - `analyze()` writes `Cypress.log()` Command Log entries automatically (§9) — the other four bindings run as plain Node test processes (Jest/Mocha/etc.) with no equivalent live-reporter object to write to; their readable-output story is `formatFailures()` instead (same package, shared by all five — see "Readable console/CI output on failure" above), which is what this binding also falls back to for a plain-text/CI failure message.
 
-Also see [`../a11y-labs/docs/BINDING_AUTHORS_GUIDE.md`](../a11y-labs/docs/BINDING_AUTHORS_GUIDE.md) — `a11y-labs`'s own reference for building a binding like this one.
+Also see [`../surea11y/docs/BINDING_AUTHORS_GUIDE.md`](../surea11y/docs/BINDING_AUTHORS_GUIDE.md) — `surea11y`'s own reference for building a binding like this one.
 
 ## Status and what's next
 

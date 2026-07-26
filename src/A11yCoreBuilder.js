@@ -1,10 +1,10 @@
 'use strict';
 
-const { runa11yCoreInPage } = require('@a11y-labs/core');
-const { A11yCoreBuilderBase } = require('@a11y-labs/binding-base');
+const { runa11yCoreInPage } = require('@surea11y/core');
+const { A11yCoreBuilderBase } = require('@surea11y/binding-base');
 
 /**
- * Cypress binding for a11y-labs -- scans a real, already-rendered page.
+ * Cypress binding for surea11y -- scans a real, already-rendered page.
  *
  * new A11yCoreBuilder()
  *   .include('#main')
@@ -17,14 +17,14 @@ const { A11yCoreBuilderBase } = require('@a11y-labs/binding-base');
  *     expect(results.checksResults.filter((r) => r.outcome === 'fail')).to.have.length(0);
  *   });
  *
- * `results` is a11y-labs's own native result shape (checksResults /
- * rulesResults -- see a11y-labs's docs/OUTPUT_SCHEMA.md), not the
+ * `results` is surea11y's own native result shape (checksResults /
+ * rulesResults -- see surea11y's docs/OUTPUT_SCHEMA.md), not the
  * violations/passes/incomplete/inapplicable shape used by other tools in
  * this space. Method names are modeled on common conventions in this space
  * (and this package's own sibling bindings) for migration ease, but the
  * richer native schema is kept as-is.
  *
- * Extends `A11yCoreBuilderBase` (from `a11y-labs-binding-base`), which owns
+ * Extends `A11yCoreBuilderBase` (from `surea11y-binding-base`), which owns
  * every method with no driver-specific work at all -- `include()`/
  * `exclude()`/`withTags()`/`disableTags()`/`withRules()`/`disableRules()`/
  * `options()`/`reportOnly()`/`elementRef()`/`frames()`/`withCustomRules()`'s
@@ -32,7 +32,7 @@ const { A11yCoreBuilderBase } = require('@a11y-labs/binding-base');
  * that are genuinely Cypress-specific: `analyze()`'s injection mechanics,
  * frame traversal, `_attachElementRefs()`, and (see below) opting out of the
  * base's default customRules stringification. See
- * `../a11y-labs-binding-base/README.md` for what's shared and why.
+ * `../surea11y-binding-base/README.md` for what's shared and why.
  *
  * No `{ page }`/`{ browser }`/`{ driver }` constructor argument, unlike every
  * sibling binding (Playwright/Puppeteer/Selenium/WebdriverIO) -- there's no
@@ -90,8 +90,8 @@ const { A11yCoreBuilderBase } = require('@a11y-labs/binding-base');
  * bindings, rather than aborting the whole scan.
  *
  * By default `analyze()` returns every rule's outcome, including
- * `pass`/`notApplicable` -- a11y-labs's own deliberate "not a
- * violations-only list" design (see a11y-labs's docs/OUTPUT_SCHEMA.md).
+ * `pass`/`notApplicable` -- surea11y's own deliberate "not a
+ * violations-only list" design (see surea11y's docs/OUTPUT_SCHEMA.md).
  * Opt in to a lighter payload with `.reportOnly(['fail', 'cantTell'])`.
  *
  * Opt in to a live DOM `Element` per occurrence (instead of just a CSS
@@ -110,7 +110,7 @@ const { A11yCoreBuilderBase } = require('@a11y-labs/binding-base');
  * this binding needed it added explicitly rather than getting it for free).
  *
  * Register your own rule(s) for just this scan with `.withCustomRules()`
- * (a11y-labs's `engineOptions.customRules` escape hatch -- see a11y-labs's
+ * (surea11y's `engineOptions.customRules` escape hatch -- see surea11y's
  * docs/ENGINE_OPTIONS.md).
  *
  * Create one builder per scan. This is a mutable object with no reset
@@ -125,10 +125,10 @@ const { A11yCoreBuilderBase } = require('@a11y-labs/binding-base');
  */
 class A11yCoreBuilder extends A11yCoreBuilderBase {
   /**
-   * @param {{ url?: string }} [opts] `url` overrides the URL a11y-labs
+   * @param {{ url?: string }} [opts] `url` overrides the URL surea11y
    *   reports for the *top* frame's result (`result.url`) -- rarely needed;
-   *   when omitted, a11y-labs falls back to the top window's own
-   *   `document.location.href` itself (see a11y-labs's src/core.js). Each
+   *   when omitted, surea11y falls back to the top window's own
+   *   `document.location.href` itself (see surea11y's src/core.js). Each
    *   sub-frame (with `.frames(true)`) always reports its own URL this same
    *   way, regardless of this option.
    */
@@ -141,10 +141,10 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * runInPage/applicability function via toReconstructableSource() -- correct
    * for every sibling binding, since their drivers cross a real serialization
    * boundary). Cypress needs no such conversion: a live function defined in
-   * the spec file is invoked directly, cross-realm, exactly like a11y-labs's
+   * the spec file is invoked directly, cross-realm, exactly like surea11y's
    * own built-in rules are -- see this class's own header comment and
    * ../ROADMAP.md §2b/§2f. A function-source string is still accepted too
-   * (a11y-labs reconstructs it the same way its built-ins are
+   * (surea11y reconstructs it the same way its built-ins are
    * reconstructed), for parity with the sibling bindings' accepted input.
    */
   _normalizeCustomRule(rule) {
@@ -152,11 +152,11 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   }
 
   /**
-   * Runs the scan and returns a Cypress chainable resolving to a11y-labs's
+   * Runs the scan and returns a Cypress chainable resolving to surea11y's
    * native result object (or `{ topFrame, frames }` when `.frames(true)`
    * was used). Do not `await` this -- use `.then()`, same as any other
    * `cy.*` command (see this class's own header comment).
-   * @returns {Cypress.Chainable<object>} see a11y-labs's docs/OUTPUT_SCHEMA.md
+   * @returns {Cypress.Chainable<object>} see surea11y's docs/OUTPUT_SCHEMA.md
    */
   analyze() {
     const { contextSelector, engineOptions, runOnly } = this._buildEngineArgs();
@@ -186,13 +186,13 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * summary entry). Before this method existed, `analyze()`'s only
    * command-log trace was a bare `window`/`then` step -- a real,
    * user-noticed gap found by comparing this project's own
-   * `a11y-labs.cy.ts` spec side-by-side with another accessibility plugin's
+   * `surea11y.cy.ts` spec side-by-side with another accessibility plugin's
    * spec in a consuming project: that plugin's Command Log named every
-   * violated rule and node count inline; a11y-labs's showed nothing beyond
+   * violated rule and node count inline; surea11y's showed nothing beyond
    * whatever `cy.task(...)` the test itself happened to add, plus Chai's own
    * truncated `Array(12)` failure message on assertion failure.
    *
-   * Named `'a11y-labs error!'` / `'a11y-labs violation summary'` -- distinct
+   * Named `'surea11y error!'` / `'surea11y violation summary'` -- distinct
    * from other plugins' similarly-shaped log entry names so the two are
    * tell-apart-able at a glance in a Command Log where both bindings'
    * specs run side by side (as they do in at least one consuming project),
@@ -203,7 +203,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * several elements at once (hence "on N Nodes"). A rule can also report
    * zero occurrences: a thrown rule surfaces as `outcome: 'cantTell'` with
    * `occurrences: []` and `error` set (see
-   * `../a11y-labs/docs/OUTPUT_SCHEMA.md`) -- `formatFailures()` already
+   * `../surea11y/docs/OUTPUT_SCHEMA.md`) -- `formatFailures()` already
    * special-cases this (falls back to `error`/`title` instead of an
    * occurrence-derived message), and this method mirrors that same fallback
    * so the two stay consistent with each other.
@@ -239,14 +239,14 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
 
       Cypress.log({
         $el: selectors ? Cypress.$(selectors, win.document) : undefined,
-        name: 'a11y-labs error!',
+        name: 'surea11y error!',
         consoleProps: () => check,
         message: `${check.ruleId} (${check.severity}): ${detail}`,
       });
     }
 
     Cypress.log({
-      name: 'a11y-labs violation summary',
+      name: 'surea11y violation summary',
       message: `${relevant.length} accessibility issue${relevant.length === 1 ? '' : 's'} ${relevant.length === 1 ? 'was' : 'were'} detected`,
     });
   }
@@ -296,7 +296,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
       }
 
       try {
-        // pageUrl: null -- let a11y-labs self-detect each frame's own URL
+        // pageUrl: null -- let surea11y self-detect each frame's own URL
         // via its own document.location.href fallback (see src/core.js),
         // rather than this binding re-deriving it itself.
         const frameResult = this._applyReportOnly(this._runInWindow(childWin, null, contextSelector, engineOptions, runOnly));

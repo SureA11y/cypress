@@ -5,7 +5,7 @@ const { A11yCoreBuilder, formatFailures } = require('../src/index.js');
 // Shared across the customRules tests below -- reported outcome depends on
 // whether ctx.document has a .my-widget element. Unlike every sibling
 // binding, runInPage can be a real, LIVE function here -- no
-// page.evaluate()-style JSON boundary to cross (see ../ROADMAP.md §2b).
+// page.evaluate()-style JSON boundary to cross.
 const MY_ORG_CUSTOM_RULE = {
   id: 'my-org-custom-rule',
   meta: { title: 'My custom rule', tags: ['custom'], defaultSeverity: 'serious' },
@@ -59,8 +59,8 @@ describe('A11yCoreBuilder', () => {
     new A11yCoreBuilder().analyze().then((results) => {
       expect(results.checksResults).to.be.an('array');
       // Proves this really scanned the fixture page, not some other
-      // document -- see ../ROADMAP.md §2b, the single most important claim
-      // this whole binding rests on.
+      // document -- the single most important claim this whole binding
+      // rests on.
       expect(results.title).to.equal('basic scan fixture');
 
       const fails = results.checksResults.filter((r) => r.outcome === 'fail');
@@ -360,7 +360,7 @@ describe('A11yCoreBuilder', () => {
       expect(occurrence.element, 'occurrence should carry a live Element').to.exist;
       expect(occurrence.element.id).to.equal('pic');
       // Prove it's usable via cy.wrap(), the idiomatic Cypress way to act on
-      // a raw element handed back by a plugin -- see ../ROADMAP.md §2e.
+      // a raw element handed back by a plugin.
       cy.wrap(occurrence.element).should('have.id', 'pic');
     });
   });
@@ -429,7 +429,7 @@ describe('A11yCoreBuilder', () => {
     });
   });
 
-  it('frames(true) reports a genuinely cross-origin iframe as { url, error } instead of aborting the scan (honest limitation -- see ../ROADMAP.md §2d)', () => {
+  it('frames(true) reports a genuinely cross-origin iframe as { url, error } instead of aborting the scan (honest limitation)', () => {
     cy.visit('cypress/fixtures/frame-parent-cross-origin.html');
     cy.wait(2000); // let the cross-origin iframe actually finish loading
 
@@ -492,10 +492,10 @@ describe('A11yCoreBuilder', () => {
     });
   });
 
-  // Readable per-violation Command Log entries -- see ../ROADMAP.md §9 for the
-  // full rationale (why this was added, why the log names are what they are,
-  // why it isn't ported to the sibling bindings).
-  describe('Cypress.log() Command Log entries (../ROADMAP.md §9)', () => {
+  // Readable per-violation Command Log entries (why this was added, why the
+  // log names are what they are, why it isn't ported to the sibling
+  // bindings).
+  describe('Cypress.log() Command Log entries', () => {
     it('analyze() logs one \'surea11y error!\' entry per fail rule plus a trailing summary entry', () => {
       cy.visit('cypress/fixtures/basic.html');
       const logSpy = cy.spy(Cypress, 'log').log(false); // .log(false): don't recursively log the spy's own invocations

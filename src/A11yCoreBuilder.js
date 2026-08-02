@@ -42,13 +42,13 @@ const { A11yCoreBuilderBase } = require('@surea11y/binding-base');
  * ## `analyze()` returns a Cypress chainable, not a Promise
  *
  * `cy.*` commands are queued, not `await`able -- mixing `async`/`await` with
- * them breaks Cypress's retry/ordering guarantees (see ../ROADMAP.md §2c).
+ * them breaks Cypress's retry/ordering guarantees.
  * So, unlike every sibling binding's `async analyze()`, this one ends its
  * internal chain with `cy.window().then(...)` and returns that chainable
  * directly. Use `.then()` to get the result, the way every other `cy.*`
  * command works -- never `await new A11yCoreBuilder().analyze()`.
  *
- * ## The realm boundary (see ../ROADMAP.md §2b for the full story)
+ * ## The realm boundary
  *
  * Cypress test code and the application-under-test (AUT) run in the same
  * browser tab, so there's no network/IPC serialization boundary the way
@@ -62,7 +62,7 @@ const { A11yCoreBuilderBase } = require('@surea11y/binding-base');
  * instead reconstructs the function's *source* inside the target window's
  * own realm via `win.eval(...)`, so its internal `document`/`window`
  * references resolve correctly. Verified against a real Cypress run, not
- * just reasoned about -- see ../ROADMAP.md §2b.
+ * just reasoned about.
  *
  * Because of that same realm access, a live `customRules` function (defined
  * back in the spec's own realm) can be passed straight through with no
@@ -80,8 +80,8 @@ const { A11yCoreBuilderBase } = require('@surea11y/binding-base');
  * Cypress spec code runs as ordinary in-page JavaScript and is fully subject
  * to it. Reading a cross-origin iframe's `contentWindow.document` throws a
  * real `SecurityError`, verified empirically against `https://example.org/`
- * embedded in an unrelated-origin fixture (see ../ROADMAP.md §2d and
- * tests/builder.cy.js) -- there is no escape hatch for this today (`cy.origin()`
+ * embedded in an unrelated-origin fixture (see tests/builder.cy.js) --
+ * there is no escape hatch for this today (`cy.origin()`
  * switches Cypress's *entire* primary browsing context to a different origin
  * for a whole callback block; it doesn't grant access into an already-loaded
  * cross-origin iframe nested inside the *current* origin's page). A
@@ -101,7 +101,7 @@ const { A11yCoreBuilderBase } = require('@surea11y/binding-base');
  * (which hand back a driver-native `ElementHandle`/`WebElement`), Cypress
  * has no such object of its own; this attaches the raw `Element`
  * (`occurrence.element`), and you wrap it in a Cypress chainable yourself
- * with `cy.wrap(...)` when you need one (see ../ROADMAP.md §2e).
+ * with `cy.wrap(...)` when you need one.
  *
  * `analyze()` also writes one `Cypress.log()` entry per fail/cantTell rule
  * plus a trailing summary entry to the Command Log, matching the readable
@@ -142,8 +142,8 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * for every sibling binding, since their drivers cross a real serialization
    * boundary). Cypress needs no such conversion: a live function defined in
    * the spec file is invoked directly, cross-realm, exactly like surea11y's
-   * own built-in rules are -- see this class's own header comment and
-   * ../ROADMAP.md §2b/§2f. A function-source string is still accepted too
+   * own built-in rules are -- see this class's own header comment.
+   * A function-source string is still accepted too
    * (surea11y reconstructs it the same way its built-ins are
    * reconstructed), for parity with the sibling bindings' accepted input.
    */
@@ -253,8 +253,8 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
 
   /**
    * Reconstructs runa11yCoreInPage's source inside `win`'s own realm (via
-   * `win.eval`) and runs it there -- see this class's own header comment and
-   * ../ROADMAP.md §2b for why `.call(win, ...)` alone would silently scan
+   * `win.eval`) and runs it there -- see this class's own header comment for
+   * why `.call(win, ...)` alone would silently scan
    * the wrong document.
    */
   _runInWindow(win, url, contextSelector, engineOptions, runOnly) {
@@ -268,7 +268,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * entry per frame onto the flat `out` array (topFrame is not included --
    * that's returned separately by analyze()). A cross-origin frame's
    * `contentWindow.document` throws a real SecurityError (verified against a
-   * real cross-origin page -- see ../ROADMAP.md §2d); caught here and
+   * real cross-origin page); caught here and
    * reported as `{ url, error }` using the iframe's own `src` attribute
    * (always readable, it's just a DOM attribute on the accessible parent
    * document) rather than the frame's own location, which is exactly what's
@@ -290,7 +290,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         out.push({
           url: el.getAttribute('src') || null,
           error: 'Cross-origin iframe: contentDocument is not accessible from Cypress spec code ' +
-            '(browser same-origin policy -- see ../ROADMAP.md §2d). ' + (accessError.message || String(accessError))
+            '(browser same-origin policy). ' + (accessError.message || String(accessError))
         });
         continue;
       }

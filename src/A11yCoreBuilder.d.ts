@@ -145,7 +145,7 @@ export interface A11yCoreMultiFrameResult {
  * docs/ENGINE_OPTIONS.md). Unlike the sibling bindings, `runInPage`/
  * `applicability` may be a real, live function with no `.toString()`
  * conversion needed -- there's no page.evaluate()-style boundary to cross in
- * Cypress (see ../ROADMAP.md §2b). A function-source string is still
+ * Cypress. A function-source string is still
  * accepted too.
  */
 export interface CustomRuleDescriptor {

@@ -10,14 +10,14 @@ module.exports = defineConfig({
     // no app server needed for this project's own tests/examples).
     supportFile: 'cypress/support/e2e.js',
     // Specs live under tests/ and examples/ (not the cypress/e2e/ default)
-    // to mirror the sibling bindings' own file layout -- see ROADMAP.md §3.
+    // to mirror the sibling bindings' own file layout.
     specPattern: ['tests/**/*.cy.js', 'examples/**/*.cy.js'],
     video: false,
     screenshotOnRunFailure: false,
     setupNodeEvents(on) {
       // @surea11y/core and @surea11y/binding-base are `file:../...`
       // dependencies, installed as symlinks into node_modules (this is a
-      // multi-package repo -- see ../ROADMAP.md §3). Webpack resolves
+      // multi-package repo). Webpack resolves
       // symlinks to their real, out-of-node_modules path by default, which
       // slips them past babel-loader's `exclude: [/node_modules/]` regex
       // (a path match, not a package-boundary check) and into Babel's

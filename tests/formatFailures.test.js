@@ -93,5 +93,5 @@ test('formatFailures(): surfaces a thrown rule (occurrences: [], error set) inst
 });
 
 // A real end-to-end "scan then format" test lives in tests/builder.cy.js
-// instead of here -- it needs a real Cypress-driven browser (see this
-// project's ROADMAP.md §2c), which node:test alone can't provide.
+// instead of here -- it needs a real Cypress-driven browser, which node:test
+// alone can't provide.

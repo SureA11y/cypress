@@ -17,14 +17,14 @@ const { A11yCoreBuilderBase } = require('@surea11y/binding-base');
  *     expect(results.checksResults.filter((r) => r.outcome === 'fail')).to.have.length(0);
  *   });
  *
- * `results` is surea11y's own native result shape (checksResults /
- * rulesResults -- see surea11y's docs/OUTPUT_SCHEMA.md), not the
+ * `results` is @surea11y/core's own native result shape (checksResults /
+ * rulesResults -- see ../core/docs/OUTPUT_SCHEMA.md), not the
  * violations/passes/incomplete/inapplicable shape used by other tools in
  * this space. Method names are modeled on common conventions in this space
  * (and this package's own sibling bindings) for migration ease, but the
  * richer native schema is kept as-is.
  *
- * Extends `A11yCoreBuilderBase` (from `surea11y-binding-base`), which owns
+ * Extends `A11yCoreBuilderBase` (from `@surea11y/binding-base`), which owns
  * every method with no driver-specific work at all -- `include()`/
  * `exclude()`/`withTags()`/`disableTags()`/`withRules()`/`disableRules()`/
  * `options()`/`reportOnly()`/`elementRef()`/`frames()`/`withCustomRules()`'s
@@ -32,7 +32,7 @@ const { A11yCoreBuilderBase } = require('@surea11y/binding-base');
  * that are genuinely Cypress-specific: `analyze()`'s injection mechanics,
  * frame traversal, `_attachElementRefs()`, and (see below) opting out of the
  * base's default customRules stringification. See
- * `../surea11y-binding-base/README.md` for what's shared and why.
+ * `../binding-base/README.md` for what's shared and why.
  *
  * No `{ page }`/`{ browser }`/`{ driver }` constructor argument, unlike every
  * sibling binding (Playwright/Puppeteer/Selenium/WebdriverIO) -- there's no

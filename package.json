@@ -37,8 +37,8 @@
     "cypress": "^14.0.0"
   },
   "scripts": {
-    "test": "node --test \"tests/**/*.test.js\" && cypress run --spec \"tests/**/*.cy.js\"",
-    "test:unit": "node --test \"tests/**/*.test.js\"",
+    "test": "node --test tests/*.test.js && cypress run --spec \"tests/**/*.cy.js\"",
+    "test:unit": "node --test tests/*.test.js",
     "test:cypress": "cypress run --spec \"tests/**/*.cy.js\"",
     "cypress:open": "cypress open",
     "example": "cypress run --spec \"examples/basic-scan.cy.js\"",

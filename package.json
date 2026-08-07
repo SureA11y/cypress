@@ -8,11 +8,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rumoroso/surea11y-core-cypress.git"
+    "url": "git+https://github.com/SureA11y/cypress.git"
   },
-  "homepage": "https://github.com/rumoroso/surea11y-core-cypress#readme",
+  "homepage": "https://github.com/SureA11y/cypress#readme",
   "bugs": {
-    "url": "https://github.com/rumoroso/surea11y-core-cypress/issues"
+    "url": "https://github.com/SureA11y/cypress/issues"
   },
   "engines": {
     "node": ">=18.13.0"

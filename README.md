@@ -199,6 +199,10 @@ This binding's builder API is deliberately close to `@surea11y/playwright`'s, `@
 
 Also see `@surea11y/core`'s [`BINDING_AUTHORS_GUIDE.md`](https://github.com/SureA11y/core/blob/main/docs/BINDING_AUTHORS_GUIDE.md) — a reference for building a binding like this one.
 
+## Maintainer
+
+Maintained by [Jorge Rumoroso](https://github.com/rumoroso).
+
 ## License
 
 MIT — see [`LICENSE`](./LICENSE).

@@ -20,6 +20,7 @@ jobs:
           node-version: 22.x
           registry-url: https://registry.npmjs.org
           cache: npm
+      - run: npm install -g npm@latest
       - run: npm ci
 
       - name: Verify tag matches package version
@@ -42,6 +43,7 @@ jobs:
           fi
           echo "resolves to: $(npm view "@surea11y/core@$RANGE" version | tail -1)"
 
+      - run: npx cypress install
       - run: npm test
 
       # Tests run against the working tree, so a `files` allowlist that omits

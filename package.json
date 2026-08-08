@@ -1,6 +1,6 @@
 {
   "name": "@surea11y/cypress",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Cypress binding for surea11y -- scan real, live-rendered pages for accessibility issues.",
   "keywords": [
     "accessibility",

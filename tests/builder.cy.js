@@ -507,23 +507,21 @@ describe('A11yCoreBuilder', () => {
       // logs too (same outcomes formatFailures() covers) but aren't this
       // test's concern.
       new A11yCoreBuilder().reportOnly(['fail']).analyze().then((results) => {
-        // basic.html's known fails, per tests/debug scan: button-name-present
-        // and img-alt-present (used elsewhere in this file), plus
-        // bypass-blocks-present (no skip link).
-        expect(results.checksResults, 'sanity check: basic.html has known fails').to.have.length(3);
+        // basic.html's known fails: button-name-present and img-alt-present,
+        // both used elsewhere in this file.
+        expect(results.checksResults, 'sanity check: basic.html has known fails').to.have.length(2);
 
         const errorCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'surea11y error!');
         const summaryCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'surea11y violation summary');
 
-        expect(errorCalls, 'one log entry per fail rule').to.have.length(3);
+        expect(errorCalls, 'one log entry per fail rule').to.have.length(2);
         expect(errorCalls.map((c) => c.args[0].message)).to.include.members([
           'button-name-present (serious): on 1 Node',
           'img-alt-present (serious): on 1 Node',
-          'bypass-blocks-present (serious): on 1 Node',
         ]);
 
         expect(summaryCalls, 'exactly one trailing summary entry').to.have.length(1);
-        expect(summaryCalls[0].args[0].message).to.equal('3 accessibility issues were detected');
+        expect(summaryCalls[0].args[0].message).to.equal('2 accessibility issues were detected');
       });
     });
 

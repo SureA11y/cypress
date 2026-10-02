@@ -47,7 +47,7 @@
   },
   "devDependencies": {
     "@cypress/webpack-batteries-included-preprocessor": "^4.2.0",
-    "cypress": "^14.0.0"
+    "cypress": "^15.21.1"
   },
   "scripts": {
     "test": "node --test tests/*.test.js && cypress run --spec \"tests/**/*.cy.js\"",

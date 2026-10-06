@@ -336,6 +336,58 @@ describe('A11yCoreBuilder', () => {
     expect(builder._customRules).to.have.length(0);
   });
 
+  // Since @surea11y/core 1.10.0 the engine throws for scan input it can't
+  // use, with a `code` on the error. The scan runs in the AUT's realm, but
+  // the error object reaches the spec as thrown, `code` included. Each
+  // test catches the failure with cy.on('fail') and returns false so the
+  // expected error doesn't fail it; done() proves the handler ran.
+  describe('engine errors', () => {
+    it('withTags() naming no tag the engine knows fails the scan with code INVALID_RUN_ONLY', (done) => {
+      cy.visit('cypress/fixtures/basic.html');
+      cy.on('fail', (err) => {
+        expect(err.code).to.equal('INVALID_RUN_ONLY');
+        done();
+        return false;
+      });
+      new A11yCoreBuilder().withTags(['wcag2.2aa']).analyze();
+    });
+
+    it('withRules() naming no rule the engine knows fails the scan with code INVALID_RUN_ONLY', (done) => {
+      cy.visit('cypress/fixtures/basic.html');
+      cy.on('fail', (err) => {
+        expect(err.code).to.equal('INVALID_RUN_ONLY');
+        done();
+        return false;
+      });
+      new A11yCoreBuilder().withRules(['img-alt-presnet']).analyze();
+    });
+
+    it('include() with a selector the browser cannot parse fails the scan with code INVALID_CONTEXT_SELECTOR', (done) => {
+      cy.visit('cypress/fixtures/basic.html');
+      cy.on('fail', (err) => {
+        expect(err.code).to.equal('INVALID_CONTEXT_SELECTOR');
+        expect(err.selector).to.equal('#a[');
+        done();
+        return false;
+      });
+      new A11yCoreBuilder().include('#a[').analyze();
+    });
+
+    it('withTags()/withRules() throw at the call, with code INVALID_RUN_ONLY, for a value that is not a non-empty string', () => {
+      for (const call of [
+        () => new A11yCoreBuilder().withTags(undefined),
+        () => new A11yCoreBuilder().withRules(''),
+        () => new A11yCoreBuilder().disableTags([null]),
+        () => new A11yCoreBuilder().disableRules(['  '])
+      ]) {
+        let err = null;
+        try { call(); } catch (e) { err = e; }
+        expect(err, 'expected the call to throw').to.be.instanceOf(TypeError);
+        expect(err.code).to.equal('INVALID_RUN_ONLY');
+      }
+    });
+  });
+
   it('reportOnly() filters checksResults down to the given outcomes', () => {
     cy.visit('cypress/fixtures/basic.html');
 

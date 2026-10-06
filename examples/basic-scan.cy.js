@@ -14,7 +14,7 @@
  *      (defaults to https://example.com/ when --env SCAN_URL isn't given)
  */
 
-const { A11yCoreBuilder } = require('../src/index.js');
+const { A11yCoreBuilder, formatOccurrenceLocation, getScanGaps } = require('../src/index.js');
 
 const url = Cypress.env('SCAN_URL') || 'https://example.com/';
 
@@ -25,18 +25,20 @@ describe('basic-scan example', () => {
     new A11yCoreBuilder().analyze().then((results) => {
       const fails = results.checksResults.filter((r) => r.outcome === 'fail');
 
-      cy.log(`Scanned ${url}`);
+      cy.log(`Scanned ${url} with @surea11y/core ${results.engine.version}`);
       cy.log(`${results.checksResults.length} rules evaluated, ${fails.length} failed.`);
 
       for (const f of fails) {
         cy.log(`${f.ruleId} (${f.severity}): ${f.occurrences.length} occurrence(s)`);
         for (const occ of f.occurrences.slice(0, 3)) {
-          cy.log(`  - ${occ.selector}`);
+          cy.log(`  - ${formatOccurrenceLocation(occ)}`);
         }
       }
 
+      for (const gap of getScanGaps(results)) cy.log(gap.message);
+
       // eslint-disable-next-line no-console
-      console.log(`Scanned ${url}\n${results.checksResults.length} rules evaluated, ${fails.length} failed.\n`);
+      console.log(`Scanned ${url} with @surea11y/core ${results.engine.version}\n${results.checksResults.length} rules evaluated, ${fails.length} failed.\n`);
       for (const f of fails) {
         // eslint-disable-next-line no-console
         console.log(`${f.ruleId} (${f.severity}): ${f.occurrences.length} occurrence(s)`);

@@ -578,6 +578,18 @@ describe('A11yCoreBuilder', () => {
     });
   });
 
+  it('formatFailures() given a whole real result locates shadow-DOM findings through their host and names the core release', () => {
+    cy.visit('cypress/fixtures/shadow-dom.html');
+
+    new A11yCoreBuilder().withRules(['img-alt-present']).analyze().then((results) => {
+      const output = formatFailures(results);
+      expect(output).to.include('img-alt-present (serious)');
+      expect(output).to.include('   at #card >>> img');
+      expect(results.engine.version).to.match(/^\d+\.\d+\.\d+/);
+      expect(output.endsWith(`Scanned with @surea11y/core ${results.engine.version}.`), output).to.be.true;
+    });
+  });
+
   // Readable per-violation Command Log entries (why this was added, why the
   // log names are what they are, why it isn't ported to the sibling
   // bindings).

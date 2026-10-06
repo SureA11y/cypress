@@ -92,6 +92,50 @@ test('formatFailures(): surfaces a thrown rule (occurrences: [], error set) inst
   assert.strictEqual(output, '1) broken-rule (serious): TypeError: something exploded');
 });
 
+test('formatFailures(): given a whole result, adds its scan gaps and the core release that produced it', () => {
+  const result = {
+    engine: { version: '1.10.0' },
+    contextMatch: { elementCount: 1, unmatchedSelectors: ['#sidebar'] },
+    skippedCustomRules: [],
+    checksResults: [
+      {
+        ruleId: 'img-alt-present',
+        outcome: 'fail',
+        severity: 'serious',
+        occurrences: [
+          { selector: 'img', shadowHostSelectors: ['#card'], summary: 'Missing alt attribute on <img>.', hint: 'Add an alt attribute.' }
+        ]
+      }
+    ]
+  };
+
+  assert.strictEqual(
+    formatFailures(result),
+    '1) img-alt-present (serious): Missing alt attribute on <img>.\n' +
+    '   at #card >>> img\n' +
+    '   Add an alt attribute.\n' +
+    '\n' +
+    'Part of the scan scope was not scanned: no element matched "#sidebar".\n' +
+    '\n' +
+    'Scanned with @surea11y/core 1.10.0.'
+  );
+});
+
+test('formatFailures(): a scan whose scope matched nothing does not read as clean', () => {
+  const output = formatFailures({
+    engine: { version: '1.10.0' },
+    contextMatch: { elementCount: 0, unmatchedSelectors: ['#main'] },
+    skippedCustomRules: [],
+    checksResults: [{ ruleId: 'img-alt-present', outcome: 'notApplicable', occurrences: [] }]
+  });
+  assert.ok(!output.includes('No accessibility violations found.'));
+  assert.ok(output.startsWith('Nothing was scanned: the scan scope matched no element ("#main").'));
+});
+
+test('formatFailures(): throws for the { topFrame, frames } of a frames(true) scan', () => {
+  assert.throws(() => formatFailures({ topFrame: { checksResults: [] }, frames: [] }), TypeError);
+});
+
 // A real end-to-end "scan then format" test lives in tests/builder.cy.js
 // instead of here -- it needs a real Cypress-driven browser, which node:test
 // alone can't provide.

@@ -2,7 +2,7 @@
 
 import type * as Core from '@surea11y/core';
 import type { Outcome, Severity, Confidence } from '@surea11y/core';
-import type { ScanResultLike } from '@surea11y/binding-base';
+import type { ScanGap, OccurrenceLocation, ScanResultLike } from '@surea11y/binding-base';
 
 // The result shapes are @surea11y/core's own types (shipped with core since
 // 1.9.0, and checked by core's tests against real scan results), so they
@@ -30,6 +30,8 @@ export type {
   CompositeResult,
   EngineErrorCode
 } from '@surea11y/core';
+
+export type { ScanGap, OccurrenceLocation };
 
 export type Category = Core.RuleMeta['category'];
 /** An open set: core can add a value in a minor release. */
@@ -170,3 +172,19 @@ export function formatFailures(
   opts?: { outcomes?: Outcome[] }
 ): string;
 
+/**
+ * What one scan result says it left out, which its checksResults alone
+ * would pass over as clean: an include() scope that matched no element
+ * (`context-not-found`, nothing was scanned), part of one that matched
+ * nothing (`context-partly-not-found`), and each custom rule that did not
+ * run (`custom-rule-skipped`). Empty when the scan left nothing out. For a
+ * `.frames(true)` scan, call it on `topFrame` and on each scanned frame.
+ */
+export function getScanGaps(result: A11yCoreResult | ScanResultLike): ScanGap[];
+
+/**
+ * An occurrence's location for a person to read: its `selector`, after each
+ * of its shadow hosts, as `host >>> selector`. Not a selector
+ * `document.querySelector()` takes; use `.elementRef(true)` for the element.
+ */
+export function formatOccurrenceLocation(occurrence: OccurrenceLocation | null | undefined): string;

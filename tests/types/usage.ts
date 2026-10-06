@@ -5,10 +5,13 @@ import type { ScanResult } from '@surea11y/core';
 import {
   A11yCoreBuilder,
   formatFailures,
+  getScanGaps,
+  formatOccurrenceLocation,
   type A11yCoreResult,
   type A11yCoreMultiFrameResult,
   type CheckResult,
-  type EngineErrorCode
+  type EngineErrorCode,
+  type ScanGap
 } from '../../src/index';
 
 declare const result: A11yCoreResult;
@@ -30,6 +33,12 @@ const message: string =
   formatFailures(result.checksResults) +
   formatFailures(result.checksResults.filter((r) => r.outcome === 'fail'), { outcomes: ['fail'] });
 
+const gaps: ScanGap[] = getScanGaps(result);
+for (const gap of gaps) {
+  if (gap.kind === 'custom-rule-skipped') gap.rule.reason.toUpperCase();
+  else gap.selectors.join(', ');
+}
+const where: string = formatOccurrenceLocation(occurrence);
 
 const code: EngineErrorCode = 'INVALID_RUN_ONLY';
 
@@ -41,10 +50,10 @@ new A11yCoreBuilder()
   .then((r: A11yCoreResult | A11yCoreMultiFrameResult) => {
     if ('topFrame' in r) {
       formatFailures(r.topFrame);
-      for (const frame of r.frames) if ('checksResults' in frame) formatFailures(frame);
+      for (const frame of r.frames) if ('checksResults' in frame) getScanGaps(frame);
     } else {
       formatFailures(r);
     }
   });
 
-export { asCore, version, scanned, skipped, hosts, path, element, headroom, message, code };
+export { asCore, version, scanned, skipped, hosts, path, element, headroom, message, where, code };

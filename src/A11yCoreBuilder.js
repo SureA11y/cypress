@@ -1,7 +1,7 @@
 'use strict';
 
 const { runa11yCoreInPage } = require('@surea11y/core');
-const { A11yCoreBuilderBase, queryOccurrenceElement } = require('@surea11y/binding-base');
+const { A11yCoreBuilderBase, getScanGaps, queryOccurrenceElement } = require('@surea11y/binding-base');
 
 /**
  * Cypress binding for surea11y -- scans a real, already-rendered page.
@@ -169,6 +169,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
     return cy.window().then((win) => {
       const topFrame = this._applyReportOnly(this._runInWindow(win, this._url, contextSelector, engineOptions, runOnly));
       this._logFindings(topFrame, win);
+      this._logScanGaps(topFrame);
 
       if (!this._scanFrames) return topFrame;
 
@@ -257,6 +258,29 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   }
 
   /**
+   * Emits one `'surea11y scan gap'` Command Log entry for each thing this
+   * result says the scan left out (binding-base's getScanGaps()): an
+   * include() scope that matched no element, so nothing was scanned (since
+   * @surea11y/core 1.10.0), part of a multi-selector scope that matched
+   * nothing, or a custom rule the engine did not run. Without it such a
+   * scan logs nothing, and reads in the Command Log like a clean one.
+   *
+   * Like _logFindings(), purely additive: it never changes the result or
+   * throws.
+   *
+   * @param {object} result one result object, never the `{ topFrame, frames }` wrapper
+   */
+  _logScanGaps(result) {
+    for (const gap of getScanGaps(result)) {
+      Cypress.log({
+        name: 'surea11y scan gap',
+        consoleProps: () => gap,
+        message: gap.message,
+      });
+    }
+  }
+
+  /**
    * Reconstructs runa11yCoreInPage's source inside `win`'s own realm (via
    * `win.eval`) and runs it there -- see this class's own header comment for
    * why `.call(win, ...)` alone would silently scan
@@ -316,6 +340,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         // comment on why $el must be scoped to the frame that was actually
         // scanned.
         this._logFindings(frameResult, childWin);
+        this._logScanGaps(frameResult);
         out.push(frameResult);
       } catch (e) {
         out.push({

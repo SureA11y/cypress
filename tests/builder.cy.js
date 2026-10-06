@@ -590,6 +590,65 @@ describe('A11yCoreBuilder', () => {
       });
     });
 
+    it('logs a \'surea11y scan gap\' entry when include() matches no element, so the scan does not read as clean', () => {
+      cy.visit('cypress/fixtures/basic.html');
+      const logSpy = cy.spy(Cypress, 'log').log(false);
+
+      new A11yCoreBuilder().include('#not-on-this-page').analyze().then((results) => {
+        // Since @surea11y/core 1.10.0 nothing is scanned: every rule is
+        // notApplicable, and contextMatch says why.
+        expect(results.contextMatch).to.deep.equal({ elementCount: 0, unmatchedSelectors: ['#not-on-this-page'] });
+        expect(results.checksResults.every((r) => r.outcome === 'notApplicable')).to.be.true;
+
+        expect(logSpy.getCalls().filter((c) => c.args[0].name === 'surea11y error!')).to.have.length(0);
+        const gapCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'surea11y scan gap');
+        expect(gapCalls).to.have.length(1);
+        expect(gapCalls[0].args[0].message).to.equal('Nothing was scanned: the scan scope matched no element ("#not-on-this-page").');
+        expect(gapCalls[0].args[0].consoleProps().kind).to.equal('context-not-found');
+      });
+    });
+
+    it('logs a \'surea11y scan gap\' entry for part of the include() scope that matched nothing', () => {
+      cy.visit('cypress/fixtures/regions-union-two.html');
+      const logSpy = cy.spy(Cypress, 'log').log(false);
+
+      new A11yCoreBuilder().include('#a').include('#missing').analyze().then((results) => {
+        expect(results.contextMatch).to.deep.equal({ elementCount: 1, unmatchedSelectors: ['#missing'] });
+        const gapCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'surea11y scan gap');
+        expect(gapCalls.map((c) => c.args[0].message)).to.deep.equal([
+          'Part of the scan scope was not scanned: no element matched "#missing".'
+        ]);
+      });
+    });
+
+    it('logs a \'surea11y scan gap\' entry for a custom rule the engine did not run', () => {
+      cy.visit('cypress/fixtures/custom-widget-single.html');
+      const logSpy = cy.spy(Cypress, 'log').log(false);
+
+      // `deprecated: true` without `deprecation` fails core's meta
+      // validation, so the rule is skipped rather than run.
+      const invalidMetaRule = { ...MY_ORG_CUSTOM_RULE, meta: { ...MY_ORG_CUSTOM_RULE.meta, deprecated: true } };
+      new A11yCoreBuilder().withCustomRules(invalidMetaRule).analyze().then((results) => {
+        expect(results.checksResults.find((r) => r.ruleId === 'my-org-custom-rule')).to.be.undefined;
+        expect(results.skippedCustomRules).to.have.length(1);
+        expect(results.skippedCustomRules[0].id).to.equal('my-org-custom-rule');
+
+        const gapCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'surea11y scan gap');
+        expect(gapCalls).to.have.length(1);
+        expect(gapCalls[0].args[0].message).to.match(/^Custom rule "my-org-custom-rule" did not run: /);
+        expect(gapCalls[0].args[0].consoleProps().kind).to.equal('custom-rule-skipped');
+      });
+    });
+
+    it('logs no \'surea11y scan gap\' entry for a scan that left nothing out', () => {
+      cy.visit('cypress/fixtures/basic.html');
+      const logSpy = cy.spy(Cypress, 'log').log(false);
+
+      new A11yCoreBuilder().include('img').analyze().then(() => {
+        expect(logSpy.getCalls().filter((c) => c.args[0].name === 'surea11y scan gap')).to.have.length(0);
+      });
+    });
+
     it('frames(true) logs each same-origin sub-frame\'s findings separately from the top frame\'s', () => {
       cy.visit('cypress/fixtures/frame-parent-same-origin.html');
       const logSpy = cy.spy(Cypress, 'log').log(false);

@@ -447,6 +447,22 @@ describe('A11yCoreBuilder', () => {
     });
   });
 
+  it('include() scopes the top frame only when combined with frames(true) -- each sub-frame is scanned whole', () => {
+    cy.visit('cypress/fixtures/frame-parent-same-origin.html');
+
+    // 'button' matches the top frame's button and nothing in the child
+    // frame. Passed down, it would leave the child frame unscanned.
+    new A11yCoreBuilder().include('button').frames(true).analyze().then((results) => {
+      expect(results.topFrame.contextSelector).to.equal('button');
+      expect(results.topFrame.contextMatch).to.deep.equal({ elementCount: 1, unmatchedSelectors: [] });
+
+      expect(results.frames).to.have.length(1);
+      expect(results.frames[0].contextSelector).to.equal(null);
+      expect(results.frames[0].contextMatch).to.equal(null);
+      expect(results.frames[0].checksResults.find((r) => r.ruleId === 'img-alt-present').outcome).to.equal('fail');
+    });
+  });
+
   it('frames(true) reports a genuinely cross-origin iframe as { url, error } instead of aborting the scan (honest limitation)', () => {
     cy.visit('cypress/fixtures/frame-parent-cross-origin.html');
     cy.wait(2000); // let the cross-origin iframe actually finish loading

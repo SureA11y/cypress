@@ -173,7 +173,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
       if (!this._scanFrames) return topFrame;
 
       const frames = [];
-      this._collectFrames(win, contextSelector, engineOptions, runOnly, frames);
+      this._collectFrames(win, engineOptions, runOnly, frames);
       return { topFrame, frames };
     });
   }
@@ -278,8 +278,15 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * (always readable, it's just a DOM attribute on the accessible parent
    * document) rather than the frame's own location, which is exactly what's
    * blocked.
+   *
+   * Every sub-frame is scanned whole: include() scopes the top frame only,
+   * as @surea11y/core's own runa11yCoreAcrossFrames does. Since core
+   * 1.10.0 a contextSelector that matches nothing scans nothing, so passing
+   * the top frame's selectors down would leave a frame unscanned whenever
+   * they name elements of the top document (and before 1.10.0 they were
+   * silently ignored there, so the frame was scanned whole anyway).
    */
-  _collectFrames(win, contextSelector, engineOptions, runOnly, out) {
+  _collectFrames(win, engineOptions, runOnly, out) {
     const iframeEls = win.document.querySelectorAll('iframe');
     for (const el of iframeEls) {
       let childWin = null;
@@ -304,7 +311,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         // pageUrl: null -- let surea11y self-detect each frame's own URL
         // via its own document.location.href fallback (see src/core.js),
         // rather than this binding re-deriving it itself.
-        const frameResult = this._applyReportOnly(this._runInWindow(childWin, null, contextSelector, engineOptions, runOnly));
+        const frameResult = this._applyReportOnly(this._runInWindow(childWin, null, null, engineOptions, runOnly));
         // childWin, not win/the top window -- see _logFindings()'s own
         // comment on why $el must be scoped to the frame that was actually
         // scanned.
@@ -318,7 +325,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         continue;
       }
 
-      this._collectFrames(childWin, contextSelector, engineOptions, runOnly, out);
+      this._collectFrames(childWin, engineOptions, runOnly, out);
     }
   }
 

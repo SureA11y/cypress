@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head><title>shadow DOM fixture</title></head>
+<body>
+  <main>
+    <!-- An image in the document itself, ahead of the component: looking up
+         the shadow image's selector in the document finds this one. -->
+    <img src="x.png" alt="A photo in the page itself">
+    <photo-card id="card"></photo-card>
+  </main>
+  <script>
+    const root = document.getElementById('card').attachShadow({ mode: 'open' });
+    root.innerHTML = '<img src="x.png">';
+  </script>
+</body>
+</html>

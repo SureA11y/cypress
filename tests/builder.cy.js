@@ -391,6 +391,24 @@ describe('A11yCoreBuilder', () => {
     });
   });
 
+  it('elementRef(true) finds an occurrence inside a shadow tree through its shadow host, not the light-DOM element its selector also matches', () => {
+    cy.visit('cypress/fixtures/shadow-dom.html');
+
+    new A11yCoreBuilder().withRules(['img-alt-present']).elementRef(true).analyze().then((results) => {
+      const rule = results.checksResults.find((r) => r.ruleId === 'img-alt-present');
+      expect(rule.outcome).to.equal('fail');
+      expect(rule.occurrences).to.have.length(1);
+      const [occurrence] = rule.occurrences;
+      expect(occurrence.shadowHostSelectors).to.deep.equal(['#card']);
+      expect(occurrence.element, 'occurrence should carry a live Element').to.exist;
+      // The image without alt is the one inside <photo-card>'s shadow root;
+      // the page's own image (which has alt) matches the same selector in
+      // the document.
+      expect(occurrence.element.getRootNode().host.id).to.equal('card');
+      expect(occurrence.element.hasAttribute('alt')).to.be.false;
+    });
+  });
+
   it('frames(true) with no sub-frames returns { topFrame, frames: [] }', () => {
     cy.visit('cypress/fixtures/basic.html');
 
@@ -522,6 +540,19 @@ describe('A11yCoreBuilder', () => {
 
         expect(summaryCalls, 'exactly one trailing summary entry').to.have.length(1);
         expect(summaryCalls[0].args[0].message).to.equal('2 accessibility issues were detected');
+      });
+    });
+
+    it('highlights an occurrence inside a shadow tree on its own element, through its shadow host', () => {
+      cy.visit('cypress/fixtures/shadow-dom.html');
+      const logSpy = cy.spy(Cypress, 'log').log(false);
+
+      new A11yCoreBuilder().withRules(['img-alt-present']).analyze().then(() => {
+        const [call] = logSpy.getCalls().filter((c) => c.args[0].name === 'surea11y error!');
+        expect(call.args[0].message).to.equal('img-alt-present (serious): on 1 Node');
+        const $el = call.args[0].$el;
+        expect($el).to.have.length(1);
+        expect($el[0].getRootNode().host.id).to.equal('card');
       });
     });
 

@@ -1,7 +1,7 @@
 'use strict';
 
 const { runa11yCoreInPage } = require('@surea11y/core');
-const { A11yCoreBuilderBase } = require('@surea11y/binding-base');
+const { A11yCoreBuilderBase, queryOccurrenceElement } = require('@surea11y/binding-base');
 
 /**
  * Cypress binding for surea11y -- scans a real, already-rendered page.
@@ -208,12 +208,13 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * occurrence-derived message), and this method mirrors that same fallback
    * so the two stay consistent with each other.
    *
-   * `$el` is resolved with `win.document` as jQuery's context argument
-   * (`Cypress.$(selectors, win.document)`), not left to jQuery's default --
-   * an unscoped `Cypress.$(selectors)` call always resolves against the top
-   * AUT document, which would silently mis-highlight or fail to highlight a
-   * sub-frame's own occurrences when called from `_collectFrames()` below
-   * for a `.frames(true)` scan.
+   * `$el` holds the occurrences' elements, each looked up from
+   * `win.document` (not jQuery's default, the top AUT document, which would
+   * silently mis-highlight or fail to highlight a sub-frame's own
+   * occurrences when called from `_collectFrames()` below for a
+   * `.frames(true)` scan) and through its shadow hosts, since an
+   * occurrence's `selector` inside a shadow tree holds only inside its
+   * shadow root.
    *
    * Runs unconditionally inside `analyze()` (not opt-in). Purely additive
    * to the Command Log; never touches the returned result object or throws,
@@ -231,14 +232,18 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
 
     for (const check of relevant) {
       const n = check.occurrences.length;
-      const selectors = check.occurrences.map((o) => o.selector).filter(Boolean).join(', ');
+      // Each occurrence is looked up on its own, through its shadow hosts
+      // when it has any (see _attachElementRefs()).
+      const elements = check.occurrences
+        .map((o) => queryOccurrenceElement(o.selector, o.shadowHostSelectors, win.document))
+        .filter(Boolean);
       // Same "no occurrences -- fall back to error/title" case formatFailures()
       // handles (see its own comment) -- a thrown rule has nothing else to
       // point at.
       const detail = n ? `on ${n} Node${n === 1 ? '' : 's'}` : (check.error || check.title);
 
       Cypress.log({
-        $el: selectors ? Cypress.$(selectors, win.document) : undefined,
+        $el: elements.length ? Cypress.$(elements) : undefined,
         name: 'surea11y error!',
         consoleProps: () => check,
         message: `${check.ruleId} (${check.severity}): ${detail}`,
@@ -318,8 +323,8 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   }
 
   /**
-   * Resolves occurrence.selector to a live DOM Element for every
-   * fail/cantTell occurrence, scoped to win's own document. Mutates and
+   * Resolves each occurrence to a live DOM Element, scoped to win's own
+   * document and through any shadow hosts. Mutates and
    * returns the same result object -- it's a fresh object from this scan,
    * not shared external state.
    */
@@ -331,9 +336,13 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         // Most occurrences carry a concrete element selector, but a
         // page-wide finding with no single target element (e.g. some
         // manual/cantTell rules) can carry "" -- not every occurrence
-        // resolves to one element, so leave element null rather than
-        // passing "" to querySelector() (which throws on empty string).
-        occurrence.element = occurrence.selector ? win.document.querySelector(occurrence.selector) : null;
+        // resolves to one element, so element is null then. Since
+        // @surea11y/core 1.10.0 an occurrence inside a shadow tree carries
+        // shadowHostSelectors, and its selector holds only inside the last
+        // host's shadow root: looking it up in the document would find
+        // another element, or none. queryOccurrenceElement() walks the
+        // hosts first, and returns null for "" or a missing element.
+        occurrence.element = queryOccurrenceElement(occurrence.selector, occurrence.shadowHostSelectors, win.document);
       }
     }
     return result;

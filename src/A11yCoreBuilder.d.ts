@@ -1,147 +1,61 @@
 /// <reference types="cypress" />
 
-// See surea11y's docs/OUTPUT_SCHEMA.md -- this file mirrors that document's
-// shapes exactly (plus the `element` field this binding adds on top when
-// .elementRef(true) is used). Keep in sync with that doc, not the other way
-// around -- it's the source of truth for what the engine actually returns.
+import type * as Core from '@surea11y/core';
+import type { Outcome, Severity, Confidence } from '@surea11y/core';
+import type { ScanResultLike } from '@surea11y/binding-base';
 
-export type Outcome = 'pass' | 'fail' | 'cantTell' | 'notApplicable';
-export type OutcomeNormalized = 'pass' | 'fail' | 'cantTell' | 'inapplicable';
-export type Severity = 'minor' | 'moderate' | 'serious' | 'critical';
-export type Confidence = 'high' | 'medium' | 'low';
-export type RuleType = 'automatic' | 'manual';
-export type Category = 'perceivable' | 'operable' | 'understandable' | 'robust' | null;
+// The result shapes are @surea11y/core's own types (shipped with core since
+// 1.9.0, and checked by core's tests against real scan results), so they
+// can't fall behind the engine the way a hand-written copy did. This file
+// only adds what this binding puts on top: the `element` on each
+// occurrence with .elementRef(true), and the `{ topFrame, frames }` shape
+// of a .frames(true) scan. The names exported here are kept from earlier
+// releases of this package; see surea11y's docs/OUTPUT_SCHEMA.md for what
+// each field means.
 
-// The reason set is open: core can add a value in a minor release, so the
-// union stays assignable from any string rather than going stale.
-export type LocaleResolutionReason =
-  | 'ok'
-  | 'primary-subtag'
-  | 'dictionary-not-loaded'
-  | 'unknown-locale'
-  | 'partial-dictionary'
-  | (string & {});
+export type {
+  Outcome,
+  OutcomeNormalized,
+  Severity,
+  Confidence,
+  RuleType,
+  LocaleResolution,
+  EngineInfo,
+  RenderingEnvironment,
+  NormativeMapping,
+  VisibilityFilter,
+  Uncertainty,
+  Margin,
+  ContextMatch,
+  CompositeResult,
+  EngineErrorCode
+} from '@surea11y/core';
 
-export interface LocaleResolution {
-  requested: string;
-  resolved: string;
-  reason: LocaleResolutionReason;
-}
+export type Category = Core.RuleMeta['category'];
+/** An open set: core can add a value in a minor release. */
+export type LocaleResolutionReason = Core.LocaleResolution['reason'];
+export type CheckResultMeta = Core.RuleMeta;
+export type CompositeResultDetails = Core.CompositeResult['data']['details'];
 
-export interface EngineInfo {
-  tag: string;
-  schemaVersion: string;
-  locale: LocaleResolution;
-}
-
-export interface NormativeMapping {
-  standard: string;
-  version: string;
-  requirement: string;
-  title: string;
-  conformanceLevel: string;
-}
-
-export interface CheckResultMeta {
-  ruleId: string;
-  ruleInterfaceVersion: string;
-  ruleVersion: string;
-  normative: boolean;
-  atomic: boolean;
-  category: Category;
-  normativeMappings: NormativeMapping[];
-  standard: string | null;
-  applicability: string;
-  expectation: string;
-  references: string[];
-  requirements: Record<string, unknown> | null;
-  mappings: Record<string, unknown> | null;
-}
-
-export interface VisibilityFilter {
-  targetSet: string;
-  accEligible: boolean | null;
-  reasons: string[];
-}
-
-export interface Occurrence {
-  selector: string;
-  html: string;
-  structuralPath: number[] | null;
-  summary: string;
-  hint: string;
-  i18n: { summaryKey: string; hintKey: string; params: Record<string, unknown> } | null;
-  data: {
-    visibilityFilter?: VisibilityFilter;
-    details?: Record<string, unknown>;
-  };
+export interface Occurrence extends Core.Occurrence {
   /**
    * Only present when `.elementRef(true)` was used. `null` when this
    * occurrence has no single resolvable target element (e.g. `selector` was
-   * `""`) -- see A11yCoreBuilder#elementRef. A plain DOM `Element`, not a
-   * Cypress chainable -- wrap it yourself with `cy.wrap(occurrence.element)`
-   * when you need one.
+   * `""`) -- see A11yCoreBuilder#elementRef. Found through
+   * `shadowHostSelectors` for an element in a shadow tree. A plain DOM
+   * `Element`, not a Cypress chainable -- wrap it yourself with
+   * `cy.wrap(occurrence.element)` when you need one.
    */
   element?: Element | null;
 }
 
-export interface CheckResult {
-  ruleId: string;
-  outcome: Outcome;
-  outcomeNormalized: OutcomeNormalized;
-  severity: Severity;
-  confidence: Confidence;
-  type: RuleType;
+export interface CheckResult extends Omit<Core.CheckResult, 'occurrences'> {
   occurrences: Occurrence[];
-  title: string;
-  description: string;
-  i18n: { titleKey: string; descriptionKey: string } | null;
-  meta: CheckResultMeta;
-  engineOptions: Record<string, unknown>;
-  schemaVersion: string;
-  /** Present only if the rule threw, or the manual-fail-to-cantTell coercion fired. */
-  error?: string;
-}
-
-export interface CompositeResultDetails {
-  reasonCode: string;
-  checksIds: string[];
-  contributors: Array<{ testId: string; outcome: string; severity: string | null }>;
-  metrics: {
-    failCount: number;
-    cantTellCount: number;
-    notApplicableCount: number;
-    passCount: number;
-    missingCount: number;
-  };
-}
-
-export interface CompositeResult {
-  ruleId: string;
-  outcome: Outcome;
-  severity: Severity;
-  confidence: Confidence;
-  type: RuleType;
-  title: string;
-  description: string;
-  meta: CheckResultMeta;
-  engineOptions: Record<string, unknown>;
-  schemaVersion: string;
-  /** Always empty -- composites are rollups, not element-level findings. */
-  occurrences: [];
-  data: { details: CompositeResultDetails };
 }
 
 /** surea11y's native top-level result shape -- see docs/OUTPUT_SCHEMA.md. */
-export interface A11yCoreResult {
-  engine: EngineInfo;
-  url: string | null;
-  title: string | null;
-  timestamp: string | null;
-  perfStats: Record<string, unknown> | null;
-  contextSelector: string | string[] | null;
+export interface A11yCoreResult extends Omit<Core.ScanResult, 'checksResults'> {
   checksResults: CheckResult[];
-  rulesResults: CompositeResult[];
 }
 
 /** A sub-frame that couldn't be scanned (cross-origin, detached, or sandboxed). */
@@ -188,7 +102,13 @@ export class A11yCoreBuilder {
    */
   constructor(opts?: { url?: string });
 
-  /** Scope the scan to one region. Call multiple times for a multi-region union. */
+  /**
+   * Scope the scan to one region. Call multiple times for a multi-region
+   * union. A selector that matches no element scans nothing (the result's
+   * `contextMatch` says so, and analyze() logs a scan gap); one the browser
+   * can't parse fails the scan with `code: 'INVALID_CONTEXT_SELECTOR'`.
+   * With `.frames(true)` it scopes the top frame only.
+   */
   include(selector: string): this;
   /**
    * Skip elements matching this selector anywhere in the scanned scope.
@@ -197,11 +117,20 @@ export class A11yCoreBuilder {
    * from other `.exclude(selector)` calls.
    */
   exclude(selector: string, opts?: { rules?: string | string[] }): this;
-  /** Only run rules carrying at least one of these tags. */
+  /**
+   * Only run rules carrying at least one of these tags. When none of them is
+   * a tag the engine knows, the scan fails with `code: 'INVALID_RUN_ONLY'`.
+   * Throws a TypeError with that code at the call for anything but a
+   * non-empty string or an array of them (as do the three methods below).
+   */
   withTags(tags: string | string[]): this;
   /** Never run rules carrying any of these tags (applied after withTags). */
   disableTags(tags: string | string[]): this;
-  /** Only run these specific rule IDs (accepts with or without the  prefix). */
+  /**
+   * Only run these specific rule IDs (accepts with or without the
+   * `a11ycore-` prefix). When none of them is a rule the engine knows, the
+   * scan fails with `code: 'INVALID_RUN_ONLY'`.
+   */
   withRules(ruleIds: string | string[]): this;
   /** Never run these specific rule IDs (applied after withRules). */
   disableRules(ruleIds: string | string[]): this;
@@ -226,11 +155,18 @@ export class A11yCoreBuilder {
 }
 
 /**
- * Formats a checksResults array into a short, human-readable block -- one
+ * Formats a result's findings into a short, human-readable block -- one
  * entry per occurrence, not per rule. Meant for an assertion library's
  * failure-message parameter, e.g.
- * `expect(results.checksResults.length, formatFailures(results.checksResults)).to.equal(0)`.
- * Deliberately framework-agnostic -- no dependency on any particular
- * `expect` implementation.
+ * `expect(results.checksResults.length, formatFailures(results)).to.equal(0)`.
+ * Given the whole result, it also lists what the scan left out (a scope
+ * that matched nothing, custom rules that did not run) and ends with the
+ * @surea11y/core release that produced it. Given a checksResults array, only the findings. Throws a TypeError
+ * for anything else, such as the `{ topFrame, frames }` of a
+ * `.frames(true)` scan: format `topFrame` and each frame on its own.
  */
-export function formatFailures(checksResults: CheckResult[], opts?: { outcomes?: Outcome[] }): string;
+export function formatFailures(
+  input: A11yCoreResult | ScanResultLike | ReadonlyArray<CheckResult>,
+  opts?: { outcomes?: Outcome[] }
+): string;
+

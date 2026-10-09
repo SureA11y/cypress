@@ -206,6 +206,35 @@ new A11yCoreBuilder()
 
 Invalid input (a missing/empty `id`, or a `runInPage`/`applicability` that's neither a function nor a non-empty string) throws immediately from `.withCustomRules()` itself, rather than surfacing later as a silently-skipped rule.
 
+### Scanning with packs
+
+A pack brings rules, variants of core's rules, a standard or a checklist, and their profiles and messages, from a package of its own (see core's [`ENGINE_OPTIONS.md`, "Packs"](https://github.com/SureA11y/core/blob/main/docs/ENGINE_OPTIONS.md#packs--rules-and-standards-from-outside-core)). A pack is prepared in Node, and a Cypress spec runs in the browser, so register the plugin in `setupNodeEvents` and name each pack by its module, a package name or a path from the project root. `.withPacks()` registers them in the page, and in every frame with `.frames(true)`, before scanning; a profile of theirs runs through `.options({ profile })`. Packs need `@surea11y/core` 1.11 or later.
+
+```js
+// cypress.config.js
+const surea11y = require('@surea11y/cypress/plugin');
+module.exports = defineConfig({
+  e2e: {
+    setupNodeEvents(on, config) {
+      surea11y(on, config);
+    }
+  }
+});
+```
+
+```js
+// a spec
+new A11yCoreBuilder()
+  .withPacks('@surea11y/rgaa')
+  .options({ profile: 'rgaa-4.1.2' })
+  .analyze()
+  .then((result) => {
+    expect(result.engine.packs).to.deep.equal(['@surea11y/rgaa@1.0.0']);
+  });
+```
+
+Without the plugin, `cy.task` fails with Cypress's own message that the task `surea11y:packScript` was not handled.
+
 ### Element addressing beyond a CSS selector
 
 Every occurrence already carries `selector` and (with `.elementRef(true)`, above) a live `Element`. It also carries `structuralPath` — a sibling-index path from the document root down to the flagged element (e.g. `[1, 0, 2]`) — a more robust identity than a selector string alone, since it survives some DOM changes a selector wouldn't. No opt-in needed.

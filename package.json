@@ -35,6 +35,8 @@
   },
   "files": [
     "src",
+    "plugin.js",
+    "plugin.d.ts",
     "README.md",
     "LICENSE"
   ],

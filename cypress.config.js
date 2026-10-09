@@ -2,6 +2,7 @@
 
 const { defineConfig } = require('cypress');
 const webpackPreprocessor = require('@cypress/webpack-batteries-included-preprocessor');
+const surea11y = require('./plugin.js');
 
 module.exports = defineConfig({
   e2e: {
@@ -14,7 +15,7 @@ module.exports = defineConfig({
     specPattern: ['tests/**/*.cy.js', 'examples/**/*.cy.js'],
     video: false,
     screenshotOnRunFailure: false,
-    setupNodeEvents(on) {
+    setupNodeEvents(on, config) {
       // @surea11y/core and @surea11y/binding-base are `file:../...`
       // dependencies, installed as symlinks into node_modules (this is a
       // multi-package repo). Webpack resolves
@@ -34,6 +35,8 @@ module.exports = defineConfig({
       const options = webpackPreprocessor.defaultOptions;
       options.webpackOptions.resolve.symlinks = false;
       on('file:preprocessor', webpackPreprocessor(options));
+      // withPacks(): packs are prepared in Node (src/plugin.js).
+      surea11y(on, config);
     }
   }
 });

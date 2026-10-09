@@ -726,4 +726,33 @@ describe('A11yCoreBuilder', () => {
       });
     });
   });
+
+  // A pack, named by its module (cypress/fixtures/acme-pack.js): the plugin
+  // prepares it in Node. A rule, a 7:1 variant of contrast-minimum, and a
+  // checklist profile with one item.
+  const ACME_PACK = './cypress/fixtures/acme-pack.js';
+
+  it('withPacks() runs a pack in the AUT, its profile and variant included', () => {
+    cy.visit('cypress/fixtures/pack.html');
+    new A11yCoreBuilder().withPacks(ACME_PACK).options({ profile: 'acme-1' }).analyze().then((result) => {
+      expect(result.engine.packs).to.deep.equal(['@acme/a11y-rules@1.0.0']);
+      expect(result.engine.profile).to.equal('acme-1');
+      const outcome = (id) => result.checksResults.find((r) => r.ruleId === id).outcome;
+      expect(outcome('acme-no-widget')).to.equal('fail');
+      // #767676 on white is 4.54:1: core's rule passes, the 7:1 variant fails.
+      expect(outcome('contrast-minimum')).to.equal('pass');
+      expect(outcome('acme-contrast-enhanced')).to.equal('fail');
+      expect(result.rulesResults.find((r) => r.ruleId === 'acme-text').outcome).to.equal('fail');
+    });
+  });
+
+  it('withPacks() runs the pack in a same-origin sub-frame too, with frames(true)', () => {
+    cy.visit('cypress/fixtures/frame-parent-same-origin.html');
+    new A11yCoreBuilder().frames(true).withPacks(ACME_PACK).analyze().then((results) => {
+      for (const r of [results.topFrame, results.frames[0]]) {
+        expect(r.engine.packs).to.deep.equal(['@acme/a11y-rules@1.0.0']);
+        expect(r.checksResults.some((c) => c.ruleId === 'acme-no-widget')).to.be.true;
+      }
+    });
+  });
 });

@@ -1,6 +1,9 @@
 'use strict';
 
 const { runa11yCoreInPage } = require('@surea11y/core');
+// The task @surea11y/cypress/plugin (src/plugin.js) registers to prepare
+// packs in Node. Named here, not imported: this file runs in the browser.
+const TASK = 'surea11y:packScript';
 const { A11yCoreBuilderBase, getScanGaps, queryOccurrenceElement } = require('@surea11y/binding-base');
 
 /**
@@ -159,7 +162,49 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * @returns {Cypress.Chainable<object>} see surea11y's docs/OUTPUT_SCHEMA.md
    */
   analyze() {
+    // withPacks() names modules; the plugin (src/plugin.js) prepares them in
+    // Node and returns the script that registers them, before the scan.
+    if (this._packSpecs && this._packSpecs.length) {
+      return cy
+        .task(TASK, { packs: this._packSpecs }, { log: false })
+        .then((prepared) => {
+          this._preparedPacks = prepared;
+          return this._scan();
+        });
+    }
+    return this._scan();
+  }
+
+  /**
+   * In Cypress, a pack is named by its module (a package name, or a path from
+   * the project root) rather than passed as an object: the spec runs in the
+   * browser, where a pack can't be prepared. @surea11y/cypress/plugin, in
+   * setupNodeEvents, prepares it in Node. Accumulates across calls.
+   */
+  withPacks(packs) {
+    const list = Array.isArray(packs) ? packs : [packs];
+    for (const spec of list) {
+      if (typeof spec !== 'string' || !spec.trim()) {
+        throw new Error(
+          'A11yCoreBuilder.withPacks(): in Cypress, name each pack by its module (a package name, or a path from the project root); @surea11y/cypress/plugin prepares it in Node.'
+        );
+      }
+    }
+    this._packSpecs = (this._packSpecs || []).concat(list);
+    return this;
+  }
+
+  /** The packs' script the plugin returned for this scan, or null. */
+  _packScript() {
+    return this._preparedPacks ? this._preparedPacks.script : null;
+  }
+
+  _scan() {
     const { contextSelector, engineOptions, runOnly } = this._buildEngineArgs();
+    if (this._preparedPacks) {
+      const existing = Array.isArray(engineOptions.packs) ? engineOptions.packs : [];
+      engineOptions.packs = existing.concat(this._preparedPacks.names);
+    }
 
     // cy.window() gives a live reference to the AUT's real `window` -- see
     // this class's own header comment for why that alone isn't enough to
@@ -287,6 +332,10 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * the wrong document.
    */
   _runInWindow(win, url, contextSelector, engineOptions, runOnly) {
+    // withPacks()'s packs, registered in this window before the scan names
+    // them in engineOptions.packs.
+    const packScript = this._packScript();
+    if (packScript) win.eval(packScript);
     const reconstructed = win.eval('(' + runa11yCoreInPage.toString() + ')');
     const result = reconstructed(url, contextSelector, engineOptions, runOnly);
     return this._elementRef ? this._attachElementRefs(win, result) : result;

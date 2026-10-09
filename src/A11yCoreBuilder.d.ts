@@ -140,6 +140,12 @@ export class A11yCoreBuilder {
   options(partialEngineOptions: Record<string, unknown>): this;
   /** Register one or more custom rules for just this scan. Call multiple times to accumulate. */
   withCustomRules(rules: CustomRuleDescriptor | CustomRuleDescriptor[]): this;
+  /**
+   * Packs from `@surea11y/core/pack` (core 1.11 or later), named by module: a
+   * package name, or a path from the project root. `@surea11y/cypress/plugin`,
+   * registered in setupNodeEvents, prepares them in Node.
+   */
+  withPacks(packs: string | string[]): this;
   /** Post-filter checksResults down to only the given outcomes. */
   reportOnly(outcomes: Outcome | Outcome[]): this;
   /** Opt in to also scanning every same-origin sub-frame reachable from the top window. */

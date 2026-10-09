@@ -225,11 +225,11 @@ module.exports = defineConfig({
 ```js
 // a spec
 new A11yCoreBuilder()
-  .withPacks('@surea11y/rgaa')
+  .withPacks('@surea11y/pack-rgaa')
   .options({ profile: 'rgaa-4.1.2' })
   .analyze()
   .then((result) => {
-    expect(result.engine.packs).to.deep.equal(['@surea11y/rgaa@1.0.0']);
+    expect(result.engine.packs).to.deep.equal(['@surea11y/pack-rgaa@1.0.0']);
   });
 ```
 

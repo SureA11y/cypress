@@ -2,6 +2,8 @@
 // types as a spec file uses them, beside @surea11y/core's own.
 /// <reference types="cypress" />
 import type { ScanResult } from '@surea11y/core';
+import { defineConfig } from 'cypress';
+import surea11yPlugin = require('../../plugin');
 import {
   A11yCoreBuilder,
   formatFailures,
@@ -11,7 +13,8 @@ import {
   type A11yCoreMultiFrameResult,
   type CheckResult,
   type EngineErrorCode,
-  type ScanGap
+  type ScanGap,
+  type WcagVersion
 } from '../../src/index';
 
 declare const result: A11yCoreResult;
@@ -36,15 +39,29 @@ const message: string =
 const gaps: ScanGap[] = getScanGaps(result);
 for (const gap of gaps) {
   if (gap.kind === 'custom-rule-skipped') gap.rule.reason.toUpperCase();
+  else if (gap.kind === 'pack-skipped') gap.pack.reason.toUpperCase();
   else gap.selectors.join(', ');
 }
 const where: string = formatOccurrenceLocation(occurrence);
 
-const code: EngineErrorCode = 'INVALID_RUN_ONLY';
+const code: EngineErrorCode = 'INVALID_ENGINE_OPTIONS';
+const wcag: WcagVersion = '2.2';
+
+const config = defineConfig({
+  e2e: {
+    setupNodeEvents(on, cfg) {
+      surea11yPlugin(on, cfg);
+    }
+  }
+});
+const task: 'surea11y:packScript' = surea11yPlugin.TASK;
 
 new A11yCoreBuilder()
   .include('main')
+  .withWcag(wcag, 'AA')
+  .withBestPractices()
   .withTags(['wcag2a', 'wcag2aa'])
+  .withPacks(['@acme/a11y-policy', './packs/house-rules.js'])
   .elementRef(true)
   .analyze()
   .then((r: A11yCoreResult | A11yCoreMultiFrameResult) => {
@@ -56,4 +73,4 @@ new A11yCoreBuilder()
     }
   });
 
-export { asCore, version, scanned, skipped, hosts, path, element, headroom, message, where, code };
+export { asCore, version, scanned, skipped, hosts, path, element, headroom, message, where, code, config, task };

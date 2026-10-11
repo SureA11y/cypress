@@ -26,7 +26,7 @@ it('has no accessibility violations', () => {
   new A11yCoreBuilder()
     .include('#main')            // optional -- call multiple times for multi-region scans
     .exclude('.cookie-banner')    // optional
-    .withTags(['wcag2a', 'wcag2aa'])
+    .withWcag('2.2', 'AA')         // the rules for WCAG 2.2's A and AA criteria
     .disableRules(['meta-refresh-no-exceptions'])
     .options({ contrast: { mode: 'auditorAssist' } })
     .analyze()
@@ -37,7 +37,7 @@ it('has no accessibility violations', () => {
 });
 ```
 
-`results` is `@surea11y/core`'s own native result shape (and `results.engine.version` says which core release produced it) — see [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md) — not the `violations`/`passes`/`incomplete`/`inapplicable` shape used by other popular accessibility testing tools for Cypress. The builder's *method names* are modeled on common conventions in this space for migration familiarity; the richer result schema is kept as-is.
+`results` is `@surea11y/core`'s own native result shape (and `results.engine.version` says which core release produced it, for example `"1.11.1"`) — see [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md) — not the `violations`/`passes`/`incomplete`/`inapplicable` shape used by other popular accessibility testing tools for Cypress. The builder's *method names* are modeled on common conventions in this space for migration familiarity; the richer result schema is kept as-is.
 
 **No `{ page }`/`{ browser }`/`{ driver }` constructor argument**, unlike most driver-based bindings — there's no such handle in Cypress. `cy` is ambient in every spec file and *is* the driver; `A11yCoreBuilder` calls `cy.window()` itself inside `analyze()`.
 
@@ -54,11 +54,13 @@ const results = await new A11yCoreBuilder().analyze(); // don't do this
 
 `cy.*` calls return chainables, not Promises, and Cypress explicitly warns against mixing `async`/`await` with them — so `analyze()` ends its internal chain with `cy.window().then(...)` and returns that chainable directly rather than being an `async` method.
 
-Also see `examples/basic-scan.cy.js` for a runnable scan-and-log spec (`npm run example -- --env SCAN_URL=https://example.com/`) and `examples/e2e-test-example.cy.js` for the accessibility-gate pattern below (`npm run example:e2e`).
+Also see `examples/basic-scan.cy.js` for a runnable scan-and-log spec (`npm run example -- --env SCAN_URL=https://example.com/`), `examples/e2e-test-example.cy.js` for the accessibility-gate pattern below (`npm run example:e2e`), and `examples/scan-with-pack.cy.js` for a scan against a pack (`npm run example:pack`).
 
 `.include(selector)` scopes the scan to the elements it matches. A selector that matches no element scans nothing: every rule reports `notApplicable`, `results.contextMatch` says the scope was not found (`{ elementCount: 0, unmatchedSelectors: ['#main'] }`), and the Command Log shows a `surea11y scan gap` entry (see below). With several `.include()` calls, one that matches nothing is named there while the others are scanned. Before `@surea11y/core` 1.10.0 such a scope silently fell back to the whole page.
 
-`withTags()`/`disableRules()` above have counterparts: `.withRules([...])` (only run these specific rule IDs) and `.disableTags([...])` (never run rules carrying any of these tags). All four compose the same way similar allow/deny-list options do in other accessibility testing tools, with one non-obvious rule worth knowing: a "disable" always wins over a "with" on the same ID/tag, and combining `.withRules()` **and** `.withTags()` together requires a rule to satisfy *both* (`@surea11y/core`'s default `includeMode: 'and'` — see [`ENGINE_OPTIONS.md`](https://github.com/SureA11y/core/blob/main/docs/ENGINE_OPTIONS.md)), not either one.
+`.withWcag(version, level)` selects by conformance target: `.withWcag('2.2', 'AA')` runs the rules for WCAG 2.2's Level A and AA criteria, by the level each criterion has in that version (4.1.1 Parsing, which 2.2 removed, is part of a `'2.1'` target and not of a `'2.2'` one). `.withBestPractices()` adds the rules that name no WCAG criterion, such as `region` and `heading-order`; on its own it runs only those. `.withRules()` and `.withTags()` add to a target's rules, and the disable methods apply after. A version other than `'2.0'`, `'2.1'` or `'2.2'`, or a level other than `'A'`, `'AA'` or `'AAA'`, throws a `TypeError` with `code: 'INVALID_RUN_ONLY'` at the call. Both need `@surea11y/core` 1.11 or later.
+
+`.withTags()`/`.disableRules()` have counterparts: `.withRules([...])` (only run these specific rule IDs) and `.disableTags([...])` (never run rules carrying any of these tags). All four compose the same way similar allow/deny-list options do in other accessibility testing tools, with one non-obvious rule worth knowing: a "disable" always wins over a "with" on the same ID/tag, and combining `.withRules()` **and** `.withTags()` together requires a rule to satisfy *both* (`@surea11y/core`'s default `includeMode: 'and'` — see [`ENGINE_OPTIONS.md`](https://github.com/SureA11y/core/blob/main/docs/ENGINE_OPTIONS.md)), not either one.
 
 `.exclude(selector)` above excludes globally. Pass a second argument to scope it to specific rule IDs instead: `.exclude('.mat-select', { rules: ['aria-required-children'] })` skips `.mat-select` for that rule only — every other rule still sees it. Global and rule-scoped `.exclude()` calls compose freely.
 
@@ -68,10 +70,12 @@ Since `@surea11y/core` 1.10.0 the scan fails, instead of quietly running every r
 
 - `INVALID_RUN_ONLY`: none of the rule IDs given to `.withRules()`, or none of the tags given to `.withTags()`, is one the engine knows (a typo such as `'wcag2.2aa'` for `'wcag22aa'`). An unknown value beside known ones is ignored with a `console.warn`. `.withTags()`/`.disableTags()`/`.withRules()`/`.disableRules()` also throw a `TypeError` with this code at the call itself for anything but a non-empty string or an array of them (an `undefined` from a missing config value, say).
 - `INVALID_CONTEXT_SELECTOR`: an `.include()` selector the browser can't parse; the error's `selector` names it.
+- `INVALID_ENGINE_OPTIONS` (core 1.11 and later): with `.options({ strictOptions: true })`, an option the engine doesn't read or a value it can't use. The message names each, with the closest known option (`lcoale`: did you mean `locale`?). Without `strictOptions`, a likely typo is only warned about in the page's console.
+- `PAGE_BUILTINS_BROKEN` (core 1.11 and later): the page's own scripts broke a JavaScript built-in the engine relies on (`Array.prototype.filter`, `Map`, `JSON.stringify`, ...), so no result it gave could be trusted. The message names each one.
 
 The scan runs in the application's own window, and Cypress fails the test with the engine's error object as thrown, `code` included, so `cy.on('fail', (err) => err.code)` can tell them apart.
 
-**Create one builder per scan.** `A11yCoreBuilder` is a mutable object with no reset between `.analyze()` calls — `include()`/`exclude()`/`withRules()`/`disableRules()`/`withTags()`/`disableTags()`/`options()`/`withCustomRules()` all push onto or merge into internal state that persists for the instance's lifetime. Calling one of them again before a second `.analyze()` call *accumulates* on top of the first scan's scope rather than replacing it (this is exactly what makes "call `.include()` several times for one scan," above, work — the same accumulation just also applies across separate scans if you reuse an instance). `.reportOnly()`/`.frames()`/`.elementRef()` are the exception: each call replaces the previous value instead of merging with it.
+**Create one builder per scan.** `A11yCoreBuilder` is a mutable object with no reset between `.analyze()` calls — `include()`/`exclude()`/`withRules()`/`disableRules()`/`withTags()`/`disableTags()`/`options()`/`withCustomRules()`/`withPacks()` all push onto or merge into internal state that persists for the instance's lifetime. Calling one of them again before a second `.analyze()` call *accumulates* on top of the first scan's scope rather than replacing it (this is exactly what makes "call `.include()` several times for one scan," above, work — the same accumulation just also applies across separate scans if you reuse an instance). `.reportOnly()`/`.frames()`/`.elementRef()`/`.withWcag()`/`.withBestPractices()` are the exception: each call replaces the previous value instead of merging with it.
 
 ### Using it as an E2E accessibility gate
 
@@ -90,7 +94,7 @@ it('has no accessibility violations', () => {
 });
 ```
 
-`getScanGaps(result)` lists what one scan result says it left out, which its `checksResults` alone would pass over as clean: `{ kind: 'context-not-found' }` when the `.include()` scope matched no element, `'context-partly-not-found'` when some of several did not, and one `'custom-rule-skipped'` (with `rule: { id, reason }`) per custom rule the engine did not run. Each has a `message`. For a `.frames(true)` scan, call it on `topFrame` and on each scanned frame.
+`getScanGaps(result)` lists what one scan result says it left out, which its `checksResults` alone would pass over as clean: `{ kind: 'context-not-found' }` when the `.include()` scope matched no element, `'context-partly-not-found'` when some of several did not, one `'custom-rule-skipped'` (with `rule: { id, reason }`) per custom rule the engine did not run, and one `'pack-skipped'` (with `pack: { name, reason }`, from `results.skippedPacks`) per pack the page did not run (see [Scanning with packs](#scanning-with-packs-standards-checklists-and-your-own-rules)). Each has a `message`. For a `.frames(true)` scan, call it on `topFrame` and on each scanned frame.
 
 ### Readable console/CI output on failure
 
@@ -99,14 +103,14 @@ A bare length/equality assertion alone gets you a *working* gate, but the failur
 ```
 AssertionError: 1) button-name-present (serious): This button has no accessible name.
    at #main > button
-   Provide visible button text or a programmatic accessible-name mechanism (for example aria-label) so assistive technologies can identify the button.
-2) img-alt-present (serious): Missing alt attribute on <img>.
+   Give the button visible text, or name it with aria-label, so screen reader users know what it does.
+2) img-alt-present (serious): This <img> has no alt attribute.
    at #main > img
-   Add an alt attribute (use alt="" only for decorative images).
+   Add an alt attribute that says what the image shows, or alt="" if the image is purely decorative.
 
 Part of the scan scope was not scanned: no element matched "#sidebar".
 
-Scanned with @surea11y/core 1.10.0.: expected 2 to equal 0
+Scanned with @surea11y/core 1.11.1.: expected 2 to equal 0
 ```
 
 An occurrence inside a shadow tree is located through its shadow hosts, as `#card >>> img`; `formatOccurrenceLocation(occurrence)` gives that same text for a message of your own. It is for a person to read, not a selector `document.querySelector()` takes.
@@ -130,7 +134,7 @@ Click any `surea11y error!` row to highlight the flagged element(s) in the app p
 
 This gives failing scans a readable, per-rule Command Log trace, rather than a bare `window`/`then` step. Entries are named `'surea11y error!'`/`'surea11y violation summary'` — distinguishable from similarly-named entries other accessibility plugins produce at a glance when multiple specs run in the same suite, while staying visually parallel enough to read as the same kind of thing.
 
-A `surea11y scan gap` entry (its `consoleProps` is the gap, as `getScanGaps()` returns it) appears when the `.include()` scope, or part of it, matched no element, or a custom rule did not run. Without it, a scan that scanned nothing would log nothing, like a clean one.
+A `surea11y scan gap` entry (its `consoleProps` is the gap, as `getScanGaps()` returns it) appears when the `.include()` scope, or part of it, matched no element, or a custom rule or a pack did not run. Without it, a scan that scanned nothing would log nothing, like a clean one.
 
 Purely additive to the Command Log — it never touches the value `.analyze()` resolves to, so it can't change any assertion's pass/fail outcome, and there's nothing to configure or disable. Combines with `.frames(true)`: each sub-frame's own findings are logged separately, scoped to that frame's own document (not the top page's).
 
@@ -149,7 +153,30 @@ new A11yCoreBuilder().frames(true).analyze().then((results) => {
 
 `.frames(true)` recurses into every same-origin `<iframe>` reachable from the top window — including nested iframes (a child's own children) — and flattens them into one `frames` array, verified against a real top→child→grandchild fixture (see `tests/builder.cy.js`).
 
-`.include()` scopes the top frame only: each sub-frame is scanned whole (its result has `contextSelector: null`), as `@surea11y/core`'s own `runa11yCoreAcrossFrames` does. A frame's document rarely has the elements the top page's selectors name, and since core 1.10.0 a selector that matches nothing scans nothing. `.exclude()` still applies in every frame. An `INVALID_RUN_ONLY` or `INVALID_CONTEXT_SELECTOR` error fails the scan from the top frame, before any sub-frame is scanned.
+`.include()` scopes the top frame only: each sub-frame is scanned whole (its result has `contextSelector: null`), as `@surea11y/core`'s own `runa11yCoreAcrossFrames` does. A frame's document rarely has the elements the top page's selectors name, and since core 1.10.0 a selector that matches nothing scans nothing. `.exclude()` still applies in every frame. An engine error (above) fails the scan from the top frame, before any sub-frame is scanned.
+
+`@surea11y/core`'s reporters take this result as it is (core 1.11.1 and later): `renderSarifReport(results)`, `renderJunitReport(results)`, `renderHtmlReport(results)` and the baseline functions report every frame's findings, and a frame that couldn't be scanned as not scanned, so it never reads as a pass. Run them in Node, from a task, since a spec runs in the browser and the SARIF reporter uses Node's `crypto`:
+
+```js
+// cypress.config.js, in setupNodeEvents(on, config)
+const fs = require('node:fs');
+const { renderSarifReport } = require('@surea11y/core/sarif');
+on('task', {
+  writeSarif({ file, results }) {
+    fs.writeFileSync(file, renderSarifReport(results));
+    return null;
+  }
+});
+```
+
+```js
+// a spec
+new A11yCoreBuilder().frames(true).analyze().then((results) => {
+  cy.task('writeSarif', { file: 'a11y.sarif', results });
+});
+```
+
+A task's argument is serialized on its way to Node, so leave out `.elementRef(true)` for a result sent there: each `element` would arrive as `{}`.
 
 **Genuinely cross-origin iframes are a real, honest limitation here — unlike driver-based bindings that operate outside the browser's same-origin policy (e.g. via CDP/WebDriver).** Cypress spec code runs as ordinary in-page JavaScript and is fully subject to the same-origin policy: reading a cross-origin iframe's `contentWindow.document` throws a real `SecurityError`, confirmed empirically against `https://example.org/` embedded in an unrelated-origin fixture. There is no escape hatch for this today — `cy.origin()` switches Cypress's entire primary browsing context to a different origin for a whole callback block (built for OAuth-redirect-style flows), it does not grant access into an already-loaded cross-origin iframe nested inside the *current* page. A cross-origin sub-frame shows up in `results.frames` as `{ url, error }` instead of aborting the whole scan.
 
@@ -162,6 +189,8 @@ new A11yCoreBuilder().reportOnly(['fail', 'cantTell']).analyze().then((results) 
 ```
 
 By default `analyze()` returns every rule's outcome, including `pass`/`notApplicable` — `@surea11y/core`'s own deliberate "not a violations-only list" design (see [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md)). Valid outcome values are `'pass'`, `'fail'`, `'cantTell'`, `'notApplicable'`. Pure binding-layer filtering — the engine itself still computes every rule. Combines with `.frames(true)`: the filter is applied to `results.topFrame` and each entry of `results.frames` independently.
+
+A result trimmed this way is no longer the whole scan to `@surea11y/core`'s reporters: JUnit counts one test per rule it finds, and EARL makes one assertion per rule. To keep a result small and still hand it to them, ask the engine for a compact one instead, with `.options({ output: { detail: 'findings' } })`: a rule that passed or did not apply keeps only its outcome, and every reporter reads it as the full result. An almost empty page's result goes from about 238 KB to 83 KB.
 
 ### Getting a live element, not just a selector string
 
@@ -206,13 +235,17 @@ new A11yCoreBuilder()
 
 Invalid input (a missing/empty `id`, or a `runInPage`/`applicability` that's neither a function nor a non-empty string) throws immediately from `.withCustomRules()` itself, rather than surfacing later as a silently-skipped rule.
 
-### Scanning with packs
+### Scanning with packs: standards, checklists and your own rules
 
-A pack brings rules, variants of core's rules, a standard or a checklist, and their profiles and messages, from a package of its own (see core's [`ENGINE_OPTIONS.md`, "Packs"](https://github.com/SureA11y/core/blob/main/docs/ENGINE_OPTIONS.md#packs--rules-and-standards-from-outside-core)). A pack is prepared in Node, and a Cypress spec runs in the browser, so register the plugin in `setupNodeEvents` and name each pack by its module, a package name or a path from the project root. `.withPacks()` registers them in the page, and in every frame with `.frames(true)`, before scanning; a profile of theirs runs through `.options({ profile })`. Packs need `@surea11y/core` 1.11 or later.
+A pack brings rules, variants of core's rules, a standard or a checklist, and their profiles and messages, from a package of its own: a national standard such as RGAA, or your organisation's accessibility policy. `@surea11y/core` runs a pack as it runs its own rules and standards, so its results, rollups and report entries look like core's. Packs need `@surea11y/core` 1.11.1 or later.
+
+A pack is prepared in Node, where `@surea11y/core/pack` reads core's rule modules, and a Cypress spec runs in the browser. So in Cypress `.withPacks()` takes each pack's module name, a package name or a path from the project root, and the binding's plugin prepares the pack in Node. Register the plugin in `setupNodeEvents`:
 
 ```js
 // cypress.config.js
+const { defineConfig } = require('cypress');
 const surea11y = require('@surea11y/cypress/plugin');
+
 module.exports = defineConfig({
   e2e: {
     setupNodeEvents(on, config) {
@@ -222,18 +255,29 @@ module.exports = defineConfig({
 });
 ```
 
+`.analyze()` then asks the plugin, through `cy.task`, for the script that registers the packs, and runs it in the page, and in every same-origin frame with `.frames(true)`, before the scan. A pack's profile is chosen with `.options({ profile })`:
+
 ```js
-// a spec
 new A11yCoreBuilder()
-  .withPacks('@surea11y/rgaa')
-  .options({ profile: 'rgaa-4.1.2' })
+  .withPacks('@acme/a11y-policy') // a pack, by its package name
+  .options({ profile: 'acme-web-2026' })
   .analyze()
-  .then((result) => {
-    expect(result.engine.packs).to.deep.equal(['@surea11y/rgaa@1.0.0']);
+  .then((results) => {
+    results.engine.packs;   // ['@acme/a11y-policy@1.0.0']
+    results.engine.profile; // 'acme-web-2026'
+
+    // A checklist's items, each one result, beside core's WCAG rollups:
+    results.rulesResults.filter((r) => r.meta && r.meta.standard === 'Acme web policy');
   });
 ```
 
-Without the plugin, `cy.task` fails with Cypress's own message that the task `surea11y:packScript` was not handled.
+A pack's own rules appear in `checksResults` like core's, with ids that start with its namespace (`acme-no-autoplay`). Without its profile, a pack's rules run only when selected, with `.withRules()` or by a tag. `@surea11y/core`'s HTML, SARIF and JUnit reports show a standard's or a checklist's items in a section of their own. Pass an array, or call `.withPacks()` again, to scan with several packs.
+
+The plugin loads a pack with Node's `require`, from the project root, and keeps it for the rest of the run, so a change to a pack's file shows on the next `cypress run`, or after restarting `cypress open`. A pack object, as the other bindings take, throws at `.withPacks()`: it can't be prepared in the browser. Without the plugin, the test fails with Cypress's own message that the task `surea11y:packScript` was not handled.
+
+**Writing a pack.** A pack is an object made with `definePack` from `@surea11y/core/pack`. [`examples/acme-policy-pack.js`](./examples/acme-policy-pack.js) is a small one: a house rule, a checklist profile (WCAG 2.2 A and AA, `region`, and the house rule) and two checklist items. `npm run example:pack` scans a page with it, naming it by its path (`'./examples/acme-policy-pack.js'`), and [`examples/e2e-test-example.cy.js`](./examples/e2e-test-example.cy.js) uses it as a test gate. For a pack of your own, `npx surea11y-pack new <folder>` (from `@surea11y/core`) writes a package that works as generated, with its tests, docs and lint; core's [`PACKS.md`](https://github.com/SureA11y/core/blob/main/docs/PACKS.md) is the guide.
+
+**When a pack doesn't run.** The plugin builds the page's script with the `@surea11y/core` this binding loads, and checks each pack as it does: for a pack that core can't run, such as one whose `core` range leaves out the installed core, or whose profile names a rule that doesn't exist, the test fails before scanning, with core's message naming the pack. A pack the page then doesn't run (one named with a raw `.options({ packs })` and never registered, or a page running another core version, when two copies of core are installed) is listed in `results.skippedPacks` with the reason. `getScanGaps()` reports that as `'pack-skipped'`, and the Command Log shows a `surea11y scan gap` entry, so a test gate that asserts on `getScanGaps(results)` fails rather than passing with the pack's checks never run. Install the pack beside the binding, so npm resolves one core for both.
 
 ### Element addressing beyond a CSS selector
 
@@ -241,27 +285,28 @@ Every occurrence already carries `selector` and (with `.elementRef(true)`, above
 
 An occurrence inside a shadow tree also carries `shadowHostSelectors`: the selectors of the shadow hosts leading to it, outermost first, each resolved in the tree that holds it. Its `selector` then holds only inside the last host's shadow root, so `document.querySelector(selector)` finds another element or none, and its `structuralPath` is `null`. `.elementRef(true)`, the Command Log and `formatFailures()` all follow the hosts (`@surea11y/core` 1.10.0 and later). See [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md) for the full field description.
 
-## Rule changes in @surea11y/core 1.10.0
+## What changes with `@surea11y/core` 1.11
 
-Nothing to change in a spec, but results differ:
+The binding passes rule IDs, tags and options through to the engine, so these show in results without a change here (see core's [`CHANGELOG.md`](https://github.com/SureA11y/core/blob/main/CHANGELOG.md) for the full list):
 
-- `landmark-role-name-present` is new: an element given `role="region"` or `role="form"` with no accessible name. It reports `cantTell` (a best practice, not a WCAG failure), so a `.reportOnly(['fail'])` gate is unaffected.
-- `label-title-only` is deprecated in favour of `form-control-programmatic-label-quality`, which reports every field it did. It now reports `notApplicable`; its id keeps resolving until core 2.0.0, so `.withRules()`/`.disableRules()` with it still work.
-- Several rules, the landmark rules among them, now report `pass` where they checked something and found it fine, instead of `notApplicable`. Under `.include()`, rules that compare elements across the page (`landmark-unique`, `heading-order` and others) report `notApplicable`, since a scope can't see the rest of the page.
-
-See core's [`CHANGELOG.md`](https://github.com/SureA11y/core/blob/main/CHANGELOG.md) for the full list.
+- **Messages are reworded** in all five languages to say plainly what is wrong and what to do (`This <img> has no alt attribute.`). Message keys, rule IDs, reason codes and baselines are unchanged; a test that matches message text needs the new wording.
+- **Contrast and target size measure what is on screen.** In a browser, the contrast rules check only text a reader can see, measure it against what is painted under it, and measure form field values and placeholders. `target-size-minimum` measures the area a pointer can hit, and exempts only links in a sentence. Expect new findings, and some old ones gone.
+- **`aria-hidden-focus` maps to 4.1.2 only**, no longer to 2.4.7 Focus Visible, so `.withTags('wcag2aa')` alone no longer selects it.
+- **A custom rule counts toward its WCAG criterion.** A `.withCustomRules()` rule with `meta.wcagSc` (or a WCAG `normativeMappings` entry) fails that criterion's rollup when it fails, and custom rules run after core's.
+- **On/off options read as meant**: `.options({ perfStats: 'false' })` is off, where it was on. `.options({ strictOptions: true })` rejects any option the engine doesn't read (see [Errors for input the engine can't use](#errors-for-input-the-engine-cant-use)).
 
 ## TypeScript
 
-`src/A11yCoreBuilder.d.ts` (re-exported from `src/index.d.ts`, wired up via `package.json`'s `types` field) ships types for the whole builder API, `formatFailures()`, `getScanGaps()` and `formatOccurrenceLocation()`. The result shapes (`A11yCoreResult`, `CheckResult`, `Occurrence`, `CompositeResult`, etc.) are built on the types `@surea11y/core` ships, which follow [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md), adding only `occurrence.element` (for `.elementRef(true)`) and the `.frames(true)` shapes. `EngineErrorCode`, `ScanGap` and the other names are exported too; `tests/types.test.js` compiles a typical spec against them. `analyze()` is typed `Cypress.Chainable<A11yCoreResult | A11yCoreMultiFrameResult>` — narrow on `'topFrame' in results` (or cast, if you already know which mode you called) to get the specific shape back.
+`src/A11yCoreBuilder.d.ts` (re-exported from `src/index.d.ts`, wired up via `package.json`'s `types` field) ships types for the whole builder API, `formatFailures()`, `getScanGaps()` and `formatOccurrenceLocation()`. The result shapes (`A11yCoreResult`, `CheckResult`, `Occurrence`, `CompositeResult`, etc.) are built on the types `@surea11y/core` ships, which follow [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md), adding only `occurrence.element` (for `.elementRef(true)`) and the `.frames(true)` shapes. `EngineErrorCode`, `ScanGap` and the other names are exported too, and so are `withWcag()` (`WcagVersion`, `WcagLevel`) and `withPacks()`, which takes module names; `@surea11y/cypress/plugin` has its own types. Code that handles every `ScanGap` kind it knows and treats the rest in an `else` branch needs a branch for `'pack-skipped'`, which carries `pack` rather than `selectors`. `tests/types.test.js` compiles a typical spec against them. `analyze()` is typed `Cypress.Chainable<A11yCoreResult | A11yCoreMultiFrameResult>` — narrow on `'topFrame' in results` (or cast, if you already know which mode you called) to get the specific shape back.
 
 ## Relationship to the sibling bindings
 
-This binding's builder API is deliberately close to `@surea11y/playwright`'s, `@surea11y/puppeteer`'s, `@surea11y/selenium`'s, and `@surea11y/webdriverio`'s — same method names, same mutability contract, same result shapes wherever Cypress's own architecture allows it. `A11yCoreBuilder` here extends `A11yCoreBuilderBase` from [`@surea11y/binding-base`](https://github.com/SureA11y/binding-base), a small shared package all of these bindings depend on for their common, non-driver-specific logic (`include`/`exclude`/`withTags`/`disableTags`/`withRules`/`disableRules`/`options`/`reportOnly`/`elementRef`/`frames`, `withCustomRules()`'s validation, `formatFailures()`, `getScanGaps()`, and finding an occurrence through its shadow hosts). The real differences, all driven by Cypress's fundamentally different architecture (test code runs in-browser, not as a separate automation-process driver), stay local to this project's own `A11yCoreBuilder.js`:
+This binding's builder API is deliberately close to `@surea11y/playwright`'s, `@surea11y/puppeteer`'s, `@surea11y/selenium`'s, and `@surea11y/webdriverio`'s — same method names, same mutability contract, same result shapes wherever Cypress's own architecture allows it. `A11yCoreBuilder` here extends `A11yCoreBuilderBase` from [`@surea11y/binding-base`](https://github.com/SureA11y/binding-base), a small shared package all of these bindings depend on for their common, non-driver-specific logic (`include`/`exclude`/`withTags`/`disableTags`/`withRules`/`disableRules`/`withWcag`/`withBestPractices`/`options`/`reportOnly`/`elementRef`/`frames`, `withCustomRules()`'s validation, `formatFailures()`, `getScanGaps()`, and finding an occurrence through its shadow hosts). The real differences, all driven by Cypress's fundamentally different architecture (test code runs in-browser, not as a separate automation-process driver), stay local to this project's own `A11yCoreBuilder.js`:
 
 - No `{ page }`/`{ browser }`/`{ driver }` constructor argument (see above).
 - `analyze()` returns a Cypress chainable, not a `Promise`.
 - `withCustomRules()` needs no function-to-string conversion.
+- `withPacks()` takes module names, which the plugin prepares in Node, rather than pack objects.
 - An engine error reaches the test as thrown, with its `code`; the driver-based bindings rebuild it on the Node side.
 - `.elementRef(true)` attaches a plain `Element`, not a driver-native handle.
 - `.frames(true)` cannot reach genuinely cross-origin iframes — an honest, real limitation the driver-based bindings don't have.

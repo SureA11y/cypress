@@ -2,7 +2,8 @@
 
 /**
  * Demonstrates the pattern that actually matters for E2E test suites: using
- * A11yCoreBuilder as an accessibility gate inside a real Cypress spec.
+ * A11yCoreBuilder as an accessibility gate inside a real Cypress spec. See
+ * scan-with-pack.cy.js for a scan against a pack.
  *
  * Run: npx cypress run --spec examples/e2e-test-example.cy.js
  *      (also covered by `npm run example:e2e`)
@@ -36,5 +37,21 @@ describe('accessibility gate example', () => {
       // nothing: getScanGaps() makes that fail the gate instead.
       expect(getScanGaps(results), formatFailures(results)).to.be.empty;
     });
+  });
+
+  it("a page meets a pack's checklist (here, acme-policy-pack.js)", () => {
+    cy.visit('cypress/fixtures/acme-well-formed.html');
+
+    new A11yCoreBuilder()
+      .withPacks('./examples/acme-policy-pack.js')
+      .options({ profile: 'acme-web-2026' })
+      .reportOnly(['fail'])
+      .analyze()
+      .then((results) => {
+        expect(results.checksResults.length, formatFailures(results)).to.equal(0);
+        // A pack that didn't run (a page on another core) would otherwise
+        // pass here with nothing checked.
+        expect(getScanGaps(results), formatFailures(results)).to.be.empty;
+      });
   });
 });

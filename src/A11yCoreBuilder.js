@@ -118,13 +118,15 @@ const { A11yCoreBuilderBase, getScanGaps, queryOccurrenceElement } = require('@s
  *
  * Create one builder per scan. This is a mutable object with no reset
  * between analyze() calls: include()/exclude()/withRules()/disableRules()/
- * withTags()/disableTags()/options()/withCustomRules() all push onto or
- * merge into internal state that persists for the instance's lifetime, so
+ * withTags()/disableTags()/options()/withCustomRules()/withPacks() all push
+ * onto or merge into internal state that persists for the instance's
+ * lifetime, so
  * calling one of them again before a second analyze() call accumulates on
  * top of the first scan's scope rather than replacing it (intentional for
  * "call include() several times for one scan" -- but a footgun if you hold
  * one instance across multiple assertions). reportOnly()/frames()/
- * elementRef() are the exception: each call replaces the previous value.
+ * elementRef()/withWcag()/withBestPractices() are the exception: each call
+ * replaces the previous value.
  */
 class A11yCoreBuilder extends A11yCoreBuilderBase {
   /**
@@ -307,8 +309,9 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * result says the scan left out (binding-base's getScanGaps()): an
    * include() scope that matched no element, so nothing was scanned (since
    * @surea11y/core 1.10.0), part of a multi-selector scope that matched
-   * nothing, or a custom rule the engine did not run. Without it such a
-   * scan logs nothing, and reads in the Command Log like a clean one.
+   * nothing, a custom rule the engine did not run, or a pack the page did
+   * not run. Without it such a scan logs nothing, and reads in the Command
+   * Log like a clean one.
    *
    * Like _logFindings(), purely additive: it never changes the result or
    * throws.

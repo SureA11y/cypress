@@ -1,14 +1,7 @@
 'use strict';
 
-/**
- * Scans a page against a pack's checklist (see acme-policy-pack.js) and
- * prints each checklist item's result, then any finding. The pack is named
- * by its path from the project root: @surea11y/cypress/plugin, registered in
- * cypress.config.js, prepares it in Node.
- *
- * Run: npm run example:pack -- --env SCAN_URL=https://example.com/
- *      (defaults to a small fixture page when --env SCAN_URL isn't given)
- */
+// Scans a page against acme-policy-pack.js's checklist, prepared in Node by the plugin cypress.config.js registers.
+// Run: npm run example:pack -- --env SCAN_URL=<url> (a small fixture page by default)
 
 const { A11yCoreBuilder, formatFailures, getScanGaps } = require('../src/index.js');
 

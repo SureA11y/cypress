@@ -2,7 +2,7 @@
 
 import type * as Core from '@surea11y/core';
 import type { Outcome, Severity, Confidence } from '@surea11y/core';
-import type { ScanGap, OccurrenceLocation, ScanResultLike } from '@surea11y/binding-base';
+import type { ScanGap, OccurrenceLocation, ScanResultLike, WcagVersion, WcagLevel } from '@surea11y/binding-base';
 
 // The result shapes are @surea11y/core's own types (shipped with core since
 // 1.9.0, and checked by core's tests against real scan results), so they
@@ -31,7 +31,7 @@ export type {
   EngineErrorCode
 } from '@surea11y/core';
 
-export type { ScanGap, OccurrenceLocation };
+export type { ScanGap, OccurrenceLocation, WcagVersion, WcagLevel };
 
 export type Category = Core.RuleMeta['category'];
 /** An open set: core can add a value in a minor release. */
@@ -136,6 +136,14 @@ export class A11yCoreBuilder {
   withRules(ruleIds: string | string[]): this;
   /** Never run these specific rule IDs (applied after withRules). */
   disableRules(ruleIds: string | string[]): this;
+  /**
+   * Run the rules for a WCAG conformance target: `withWcag('2.2', 'AA')`
+   * runs those of WCAG 2.2's A and AA criteria. withTags()/withRules() add
+   * to them. A later call replaces the target.
+   */
+  withWcag(version: WcagVersion | 2.0 | 2.1 | 2.2, level?: WcagLevel): this;
+  /** Also run the best-practice rules, those that name no WCAG criterion. */
+  withBestPractices(enabled?: boolean): this;
   /** Merge arbitrary engineOptions (locale, contrast.mode, policyContract, ...). */
   options(partialEngineOptions: Record<string, unknown>): this;
   /** Register one or more custom rules for just this scan. Call multiple times to accumulate. */
@@ -157,7 +165,11 @@ export class A11yCoreBuilder {
    * Runs the scan. Returns a Cypress chainable -- use `.then()`, never
    * `await` (see this class's own header comment in A11yCoreBuilder.js).
    * Resolves to `{ topFrame, frames }` instead of a single result when
-   * `.frames(true)` was used.
+   * `.frames(true)` was used. Fails the test with the engine's error when
+   * it refuses its input, its `code` one of: `INVALID_RUN_ONLY`,
+   * `INVALID_CONTEXT_SELECTOR`, `INVALID_ENGINE_OPTIONS` (an option
+   * `strictOptions: true` rejects) or `PAGE_BUILTINS_BROKEN` (the page's
+   * scripts broke a JavaScript built-in the engine relies on).
    */
   analyze(): Cypress.Chainable<A11yCoreResult | A11yCoreMultiFrameResult>;
 }
@@ -168,7 +180,7 @@ export class A11yCoreBuilder {
  * failure-message parameter, e.g.
  * `expect(results.checksResults.length, formatFailures(results)).to.equal(0)`.
  * Given the whole result, it also lists what the scan left out (a scope
- * that matched nothing, custom rules that did not run) and ends with the
+ * that matched nothing, custom rules or packs that did not run) and ends with the
  * @surea11y/core release that produced it. Given a checksResults array, only the findings. Throws a TypeError
  * for anything else, such as the `{ topFrame, frames }` of a
  * `.frames(true)` scan: format `topFrame` and each frame on its own.
@@ -182,8 +194,9 @@ export function formatFailures(
  * What one scan result says it left out, which its checksResults alone
  * would pass over as clean: an include() scope that matched no element
  * (`context-not-found`, nothing was scanned), part of one that matched
- * nothing (`context-partly-not-found`), and each custom rule that did not
- * run (`custom-rule-skipped`). Empty when the scan left nothing out. For a
+ * nothing (`context-partly-not-found`), each custom rule that did not run
+ * (`custom-rule-skipped`), and each pack that did not run
+ * (`pack-skipped`). Empty when the scan left nothing out. For a
  * `.frames(true)` scan, call it on `topFrame` and on each scanned frame.
  */
 export function getScanGaps(result: A11yCoreResult | ScanResultLike): ScanGap[];

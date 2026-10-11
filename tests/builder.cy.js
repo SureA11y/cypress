@@ -1,6 +1,6 @@
 'use strict';
 
-const { A11yCoreBuilder, formatFailures } = require('../src/index.js');
+const { A11yCoreBuilder, formatFailures, getScanGaps } = require('../src/index.js');
 
 // Shared across the customRules tests below -- reported outcome depends on
 // whether ctx.document has a .my-widget element. Unlike every sibling
@@ -751,8 +751,94 @@ describe('A11yCoreBuilder', () => {
     new A11yCoreBuilder().frames(true).withPacks(ACME_PACK).analyze().then((results) => {
       for (const r of [results.topFrame, results.frames[0]]) {
         expect(r.engine.packs).to.deep.equal(['@acme/a11y-rules@1.0.0']);
-        expect(r.checksResults.some((c) => c.ruleId === 'acme-no-widget')).to.be.true;
+        expect(r.checksResults.find((c) => c.ruleId === 'acme-no-widget').outcome).to.equal('fail');
       }
+    });
+  });
+
+  it('withPacks() can scan the same page twice', () => {
+    cy.visit('cypress/fixtures/pack.html');
+    for (let i = 0; i < 2; i++) {
+      new A11yCoreBuilder().withPacks(ACME_PACK).withRules('acme-no-widget').analyze().then((result) => {
+        expect(result.checksResults.map((r) => [r.ruleId, r.outcome])).to.deep.equal([['acme-no-widget', 'fail']]);
+      });
+    }
+  });
+
+  it('withPacks() takes a module name, not a pack object', () => {
+    for (const call of [() => new A11yCoreBuilder().withPacks({ name: '@acme/a11y-rules', version: '1.0.0' }), () => new A11yCoreBuilder().withPacks('  ')]) {
+      let err = null;
+      try { call(); } catch (e) { err = e; }
+      expect(err, 'expected the call to throw').to.be.instanceOf(Error);
+      expect(err.message).to.include('name each pack by its module');
+    }
+  });
+
+  it('withPacks() fails the test before scanning for a pack whose core range leaves out the installed core', (done) => {
+    cy.visit('cypress/fixtures/pack.html');
+    const logSpy = cy.spy(Cypress, 'log').log(false);
+    cy.on('fail', (err) => {
+      expect(err.message).to.include('@acme/a11y-rules-next: it supports core ^2.0.0');
+      expect(logSpy.getCalls().filter((c) => /^surea11y /.test(c.args[0].name))).to.have.length(0);
+      done();
+      return false;
+    });
+    new A11yCoreBuilder().withPacks('./cypress/fixtures/acme-pack-core-2.js').analyze();
+  });
+
+  it('logs a \'surea11y scan gap\' entry for a pack the page does not run', () => {
+    cy.visit('cypress/fixtures/basic.html');
+    const logSpy = cy.spy(Cypress, 'log').log(false);
+    new A11yCoreBuilder().options({ packs: ['@acme/not-registered@1.0.0'] }).withRules('img-alt-present').analyze().then((result) => {
+      expect(getScanGaps(result).map((g) => [g.kind, g.pack.name])).to.deep.equal([['pack-skipped', '@acme/not-registered@1.0.0']]);
+      const gapCalls = logSpy.getCalls().filter((c) => c.args[0].name === 'surea11y scan gap');
+      expect(gapCalls.map((c) => c.args[0].consoleProps().kind)).to.deep.equal(['pack-skipped']);
+      expect(gapCalls[0].args[0].message).to.match(/^Pack "@acme\/not-registered@1\.0\.0" did not run: /);
+    });
+  });
+
+  it('withWcag() runs a WCAG target, and withBestPractices() adds the best practices', () => {
+    cy.visit('cypress/fixtures/basic.html');
+    new A11yCoreBuilder().withWcag('2.2', 'AA').analyze().then((target) => {
+      const ids = target.checksResults.map((r) => r.ruleId);
+      expect(target.engine.wcagVersion).to.equal('2.2');
+      expect(ids).to.include('img-alt-present');
+      expect(ids, '4.1.1 is no part of a WCAG 2.2 target').not.to.include('duplicate-id');
+      expect(ids).not.to.include('region');
+    });
+    new A11yCoreBuilder().withWcag('2.2', 'AA').withBestPractices().analyze().then((withBest) => {
+      expect(withBest.checksResults.map((r) => r.ruleId)).to.include('region');
+    });
+  });
+
+  it('withWcag() throws at the call, with code INVALID_RUN_ONLY, for a version or level it does not know', () => {
+    for (const call of [() => new A11yCoreBuilder().withWcag('3.0'), () => new A11yCoreBuilder().withWcag('2.2', 'AAAA')]) {
+      let err = null;
+      try { call(); } catch (e) { err = e; }
+      expect(err, 'expected the call to throw').to.be.instanceOf(TypeError);
+      expect(err.code).to.equal('INVALID_RUN_ONLY');
+    }
+  });
+
+  it('strictOptions fails the scan on a misspelt option with code INVALID_ENGINE_OPTIONS', (done) => {
+    cy.visit('cypress/fixtures/basic.html');
+    cy.on('fail', (err) => {
+      expect(err.code).to.equal('INVALID_ENGINE_OPTIONS');
+      expect(err.message).to.include('lcoale');
+      done();
+      return false;
+    });
+    new A11yCoreBuilder().options({ strictOptions: true, lcoale: 'fr' }).analyze();
+  });
+
+  it('a frames(true) result goes to @surea11y/core\'s SARIF report with every frame\'s findings', () => {
+    cy.visit('cypress/fixtures/frame-parent-img.html');
+    new A11yCoreBuilder().frames(true).withRules('img-alt-present').analyze().then((results) => cy.task('renderSarif', results)).then((sarif) => {
+      const run = JSON.parse(sarif).runs[0];
+      const failures = run.results.filter((r) => r.ruleId === 'img-alt-present' && r.level === 'error');
+      expect(failures, JSON.stringify(failures.map((r) => r.locations))).to.have.length(2);
+      const notices = (run.invocations || []).flatMap((i) => i.toolExecutionNotifications || []);
+      expect(notices.map((n) => n.message.text), 'no frame reported as not scanned').to.deep.equal([]);
     });
   });
 });

@@ -3,6 +3,7 @@
 const { defineConfig } = require('cypress');
 const webpackPreprocessor = require('@cypress/webpack-batteries-included-preprocessor');
 const surea11y = require('./plugin.js');
+const { renderSarifReport } = require('@surea11y/core/sarif');
 
 module.exports = defineConfig({
   e2e: {
@@ -37,6 +38,9 @@ module.exports = defineConfig({
       on('file:preprocessor', webpackPreprocessor(options));
       // withPacks(): packs are prepared in Node (src/plugin.js).
       surea11y(on, config);
+      // For the tests: core's SARIF reporter hashes with Node's crypto, so it
+      // runs in Node rather than in the spec.
+      on('task', { renderSarif: (results) => renderSarifReport(results) });
     }
   }
 });

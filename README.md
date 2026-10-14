@@ -155,6 +155,8 @@ A `surea11y scan gap` entry (its `consoleProps` is the gap, as `getScanGaps()` r
 
 Purely additive to the Command Log — it never touches the value `.analyze()` resolves to, so it can't change any assertion's pass/fail outcome, and there's nothing to configure or disable. Combines with `.frames(true)`: each sub-frame's own findings are logged separately, scoped to that frame's own document (not the top page's).
 
+The driver-based bindings also print each scan gap with `console.warn`, and take a `.logger(fn)` to send those lines elsewhere. This binding prints none, since the Command Log entry above already shows each gap in the runner, so `.logger()` changes nothing here. To act on gaps in a test, read `getScanGaps(results)`.
+
 Only Cypress gets this — see "Relationship to the sibling bindings" below for why.
 
 ### Scanning every frame, including same-origin iframes

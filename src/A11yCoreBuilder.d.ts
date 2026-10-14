@@ -150,6 +150,12 @@ export class A11yCoreBuilder {
    * later call replaces the mode.
    */
   includeMode(mode: 'and' | 'or'): this;
+  /**
+   * Where the driver-based bindings send their scan-gap warnings. This
+   * binding prints none (the Command Log shows each gap), so it changes
+   * nothing here; it is typed so shared code that calls it compiles.
+   */
+  logger(fn: ((gap: import('@surea11y/binding-base').ScanGap, result: A11yCoreResult) => void) | null): this;
   /** Merge arbitrary engineOptions (locale, contrast.mode, policyContract, ...). */
   options(partialEngineOptions: Record<string, unknown>): this;
   /** Register one or more custom rules for just this scan. Call multiple times to accumulate. */

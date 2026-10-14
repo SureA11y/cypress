@@ -151,6 +151,12 @@ export class A11yCoreBuilder {
    */
   includeMode(mode: 'and' | 'or'): this;
   /**
+   * The WCAG level of the criteria the scan reports, without changing which
+   * rules run: `.withRules('contrast-computable').wcagLevel('AA')` reports
+   * 1.4.3 and not 1.4.6. Any case; null clears it. A later call replaces it.
+   */
+  wcagLevel(level: WcagLevel | 'a' | 'aa' | 'aaa' | null): this;
+  /**
    * Where the driver-based bindings send their scan-gap warnings. This
    * binding prints none (the Command Log shows each gap), so it changes
    * nothing here; it is typed so shared code that calls it compiles.

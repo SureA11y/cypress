@@ -79,6 +79,18 @@ new A11yCoreBuilder()
 
 Without `.includeMode('or')`, the same lines run no rule at all, since `contrast-computable` isn't tagged `forms`, and a scan of no rules looks clean. The same goes for a WCAG level tag beside a best practice: `.withTags('wcag2a').withRules('region')` runs nothing, and with `'or'` runs the `wcag2a` rules plus `region`. On its own, with no other selection, it changes nothing. A value other than `'and'` or `'or'` throws a `TypeError` with `code: 'INVALID_RUN_ONLY'` at the call. A `.withWcag()` target doesn't need it: its rules are always added to what tags and rules select.
 
+`.wcagLevel(level)` sets the WCAG level of the criteria a scan reports, without changing which rules run: criteria above it are left out of `results.rulesResults`, while every selected rule still runs and reports in `results.checksResults`. It's what lets a scan that names a few checks say it is meant as WCAG AA. A team that gates each pull request on colour contrast alone, say, runs one check, which covers both 1.4.3 (AA) and 1.4.6 (AAA):
+
+```js
+new A11yCoreBuilder()
+  .withRules('contrast-computable')
+  .wcagLevel('AA')               // report 1.4.3, not the AAA 1.4.6
+  .analyze()
+  .then((results) => { /* ... */ });
+```
+
+Without `.wcagLevel('AA')`, that scan reports 1.4.6 as well, so a site that meets AA can show a failing AAA criterion it never aimed for. With it, the scan reports 1.4.3 alone, and `results.engine.wcagLevel` says `'AA'`. A `.withWcag()` target already implies its level; `.wcagLevel()` is for selections that don't, and wins when both are given, as it does over a level given through `.options()`. `'A'`, `'AA'` or `'AAA'` in any case is accepted. Anything else throws a `TypeError` with `code: 'INVALID_ENGINE_OPTIONS'` at the call, and `null` clears it. Needs the `@surea11y/core` release after 1.11.1.
+
 `.exclude(selector)` above excludes globally. Pass a second argument to scope it to specific rule IDs instead: `.exclude('.mat-select', { rules: ['aria-required-children'] })` skips `.mat-select` for that rule only — every other rule still sees it. Global and rule-scoped `.exclude()` calls compose freely.
 
 ### Errors for input the engine can't use
@@ -92,7 +104,7 @@ Since `@surea11y/core` 1.10.0 the scan fails, instead of quietly running every r
 
 The scan runs in the application's own window, and Cypress fails the test with the engine's error object as thrown, `code` included, so `cy.on('fail', (err) => err.code)` can tell them apart.
 
-**Create one builder per scan.** `A11yCoreBuilder` is a mutable object with no reset between `.analyze()` calls — `include()`/`exclude()`/`withRules()`/`disableRules()`/`withTags()`/`disableTags()`/`options()`/`withCustomRules()`/`withPacks()` all push onto or merge into internal state that persists for the instance's lifetime. Calling one of them again before a second `.analyze()` call *accumulates* on top of the first scan's scope rather than replacing it (this is exactly what makes "call `.include()` several times for one scan," above, work — the same accumulation just also applies across separate scans if you reuse an instance). `.reportOnly()`/`.frames()`/`.elementRef()`/`.withWcag()`/`.withBestPractices()`/`.includeMode()` are the exception: each call replaces the previous value instead of merging with it.
+**Create one builder per scan.** `A11yCoreBuilder` is a mutable object with no reset between `.analyze()` calls — `include()`/`exclude()`/`withRules()`/`disableRules()`/`withTags()`/`disableTags()`/`options()`/`withCustomRules()`/`withPacks()` all push onto or merge into internal state that persists for the instance's lifetime. Calling one of them again before a second `.analyze()` call *accumulates* on top of the first scan's scope rather than replacing it (this is exactly what makes "call `.include()` several times for one scan," above, work — the same accumulation just also applies across separate scans if you reuse an instance). `.reportOnly()`/`.frames()`/`.elementRef()`/`.withWcag()`/`.withBestPractices()`/`.includeMode()`/`.wcagLevel()` are the exception: each call replaces the previous value instead of merging with it.
 
 ### Using it as an E2E accessibility gate
 
@@ -336,7 +348,7 @@ The binding passes rule IDs, tags and options through to the engine, so these sh
 
 ## Relationship to the sibling bindings
 
-This binding's builder API is deliberately close to `@surea11y/playwright`'s, `@surea11y/puppeteer`'s, `@surea11y/selenium`'s, and `@surea11y/webdriverio`'s — same method names, same mutability contract, same result shapes wherever Cypress's own architecture allows it. `A11yCoreBuilder` here extends `A11yCoreBuilderBase` from [`@surea11y/binding-base`](https://github.com/SureA11y/binding-base), a small shared package all of these bindings depend on for their common, non-driver-specific logic (`include`/`exclude`/`withTags`/`disableTags`/`withRules`/`disableRules`/`withWcag`/`withBestPractices`/`includeMode`/`options`/`reportOnly`/`elementRef`/`frames`, `withCustomRules()`'s validation, `formatFailures()`, `getScanGaps()`, and finding an occurrence through its shadow hosts). The real differences, all driven by Cypress's fundamentally different architecture (test code runs in-browser, not as a separate automation-process driver), stay local to this project's own `A11yCoreBuilder.js`:
+This binding's builder API is deliberately close to `@surea11y/playwright`'s, `@surea11y/puppeteer`'s, `@surea11y/selenium`'s, and `@surea11y/webdriverio`'s — same method names, same mutability contract, same result shapes wherever Cypress's own architecture allows it. `A11yCoreBuilder` here extends `A11yCoreBuilderBase` from [`@surea11y/binding-base`](https://github.com/SureA11y/binding-base), a small shared package all of these bindings depend on for their common, non-driver-specific logic (`include`/`exclude`/`withTags`/`disableTags`/`withRules`/`disableRules`/`withWcag`/`withBestPractices`/`includeMode`/`wcagLevel`/`options`/`reportOnly`/`elementRef`/`frames`, `withCustomRules()`'s validation, `formatFailures()`, `getScanGaps()`, and finding an occurrence through its shadow hosts). The real differences, all driven by Cypress's fundamentally different architecture (test code runs in-browser, not as a separate automation-process driver), stay local to this project's own `A11yCoreBuilder.js`:
 
 - No `{ page }`/`{ browser }`/`{ driver }` constructor argument (see above).
 - `analyze()` returns a Cypress chainable, not a `Promise`.

@@ -41,14 +41,15 @@
     "LICENSE"
   ],
   "dependencies": {
-    "@surea11y/binding-base": "^1.3.1",
-    "@surea11y/core": "^1.11.1"
+    "@surea11y/binding-base": "^1.3.1"
   },
   "peerDependencies": {
+    "@surea11y/core": ">=1.11.1",
     "cypress": ">=13.0.0"
   },
   "devDependencies": {
     "@cypress/webpack-batteries-included-preprocessor": "^5.0.0",
+    "@surea11y/core": "^1.11.1",
     "cypress": "^15.21.1",
     "typescript": "^7.0.2"
   },

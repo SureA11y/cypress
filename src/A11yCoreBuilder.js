@@ -1,10 +1,52 @@
 'use strict';
 
-const { runa11yCoreInPage } = require('@surea11y/core');
-// The task @surea11y/cypress/plugin (src/plugin.js) registers to prepare
-// packs in Node. Named here, not imported: this file runs in the browser.
+const { runa11yCoreInPage, internalsHookScript } = require('@surea11y/core');
+// The tasks @surea11y/cypress/plugin (src/plugin.js) registers: one prepares
+// packs in Node, one lists what a scan will check. Named here, not imported:
+// this file runs in the browser.
 const TASK = 'surea11y:packScript';
-const { A11yCoreBuilderBase, getScanGaps, queryOccurrenceElement } = require('@surea11y/binding-base');
+const PLANNED_TASK = 'surea11y:planned';
+const {
+  A11yCoreBuilderBase,
+  getScanGaps,
+  getScanNotes,
+  queryOccurrenceElement,
+  toReconstructableSource
+} = require('@surea11y/binding-base');
+
+let hookRegistered = false;
+
+/**
+ * Installs @surea11y/core's opt-in internals hook, so a scan can read the
+ * names, states and roles web components set through a private
+ * ElementInternals.
+ *
+ * - With no argument, in the support file (or a spec, before cy.visit()):
+ *   registers a `window:before:load` handler that installs it in the app's
+ *   window before the app's scripts, on every visit from then on.
+ *   Registering again does nothing.
+ * - With a window: installs it there, for one visit:
+ *   `cy.visit(url, { onBeforeLoad: installInternalsHook })`.
+ *
+ * It runs the script with the window's eval, which needs Cypress's default
+ * Content Security Policy stripping. Frames inside the app don't get it.
+ * @param {Window} [win]
+ */
+function installInternalsHook(win) {
+  if (win !== undefined) {
+    if (!win || typeof win.eval !== 'function') {
+      throw new TypeError('installInternalsHook(): expected the app\'s window (as onBeforeLoad gives it), or no argument to install it on every visit.');
+    }
+    win.eval(internalsHookScript());
+    return;
+  }
+  if (typeof Cypress === 'undefined' || typeof Cypress.on !== 'function') {
+    throw new Error('installInternalsHook(): call it from a Cypress support file or spec.');
+  }
+  if (hookRegistered) return;
+  hookRegistered = true;
+  Cypress.on('window:before:load', (appWindow) => appWindow.eval(internalsHookScript()));
+}
 
 /**
  * Cypress binding for surea11y -- scans a real, already-rendered page.
@@ -129,6 +171,11 @@ const { A11yCoreBuilderBase, getScanGaps, queryOccurrenceElement } = require('@s
  * replaces the previous value.
  */
 class A11yCoreBuilder extends A11yCoreBuilderBase {
+  /** The same as the exported installInternalsHook(), as every binding's builder has it. */
+  static installInternalsHook(win) {
+    return installInternalsHook(win);
+  }
+
   /**
    * @param {{ url?: string }} [opts] `url` overrides the URL surea11y
    *   reports for the *top* frame's result (`result.url`) -- rarely needed;
@@ -194,6 +241,42 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
     }
     this._packSpecs = (this._packSpecs || []).concat(list);
     return this;
+  }
+
+  /**
+   * The rules a scan with this builder will run, from core's
+   * getChecksForRunOnly(), worked out in Node by @surea11y/cypress/plugin.
+   * A Cypress spec runs in the browser, so this returns a chainable
+   * resolving to the list, as analyze() does.
+   * @returns {Cypress.Chainable<object[]>}
+   */
+  plannedChecks() {
+    return this._planned('checks');
+  }
+
+  /**
+   * The criteria a scan with this builder will report in rulesResults, from
+   * core's getRulesForRunOnly(), worked out in Node by the plugin. Returns a
+   * chainable.
+   * @returns {Cypress.Chainable<object[]>}
+   */
+  plannedCriteria() {
+    return this._planned('criteria');
+  }
+
+  _planned(kind) {
+    const { runOnly, engineOptions } = this._buildEngineArgs();
+    // A task's argument crosses into Node as JSON, so a custom rule's live
+    // functions go as their source, which core rebuilds.
+    if (Array.isArray(engineOptions.customRules)) {
+      engineOptions.customRules = engineOptions.customRules.map((rule) => {
+        const sent = { ...rule };
+        if (typeof rule.runInPage === 'function') sent.runInPage = toReconstructableSource(rule.runInPage);
+        if (typeof rule.applicability === 'function') sent.applicability = toReconstructableSource(rule.applicability);
+        return sent;
+      });
+    }
+    return cy.task(PLANNED_TASK, { kind, runOnly, engineOptions, packs: this._packSpecs || [] }, { log: false });
   }
 
   /** The packs' script the plugin returned for this scan, or null. */
@@ -326,6 +409,17 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         message: gap.message,
       });
     }
+    // The internals-hook note, once per builder: custom elements the hook
+    // would have let the engine read.
+    if (this._saidInternalsNote) return;
+    const note = getScanNotes(result).find((n) => n.kind === 'internals-hook');
+    if (!note) return;
+    this._saidInternalsNote = true;
+    Cypress.log({
+      name: 'surea11y scan note',
+      consoleProps: () => note,
+      message: note.message,
+    });
   }
 
   /**
@@ -433,4 +527,4 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   }
 }
 
-module.exports = { A11yCoreBuilder };
+module.exports = { A11yCoreBuilder, installInternalsHook };

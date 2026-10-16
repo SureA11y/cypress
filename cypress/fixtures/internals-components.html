@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <title>internals hook fixture</title>
+  <script>
+    // Web components that keep their ElementInternals in a private field,
+    // where no script but the internals hook can read them.
+    customElements.define('x-check', class extends HTMLElement {
+      #internals;
+      constructor() {
+        super();
+        this.#internals = this.attachInternals();
+        this.#internals.ariaLabel = 'Subscribe';
+        this.#internals.ariaChecked = 'false';
+      }
+    });
+    // A switch only through its internals, with no name.
+    customElements.define('x-toggle', class extends HTMLElement {
+      #internals;
+      constructor() {
+        super();
+        this.#internals = this.attachInternals();
+        this.#internals.role = 'switch';
+      }
+    });
+    // The same switch, named through its internals.
+    customElements.define('x-named-toggle', class extends HTMLElement {
+      #internals;
+      constructor() {
+        super();
+        this.#internals = this.attachInternals();
+        this.#internals.role = 'switch';
+        this.#internals.ariaLabel = 'Dark mode';
+      }
+    });
+  </script>
+</head>
+<body>
+  <main>
+    <h1>Settings</h1>
+    <x-check id="check" role="checkbox"></x-check>
+    <x-toggle id="toggle"></x-toggle>
+    <x-named-toggle id="named-toggle"></x-named-toggle>
+  </main>
+</body>
+</html>

@@ -1,6 +1,6 @@
 'use strict';
 
-const { A11yCoreBuilder, formatFailures, getScanGaps } = require('../src/index.js');
+const { A11yCoreBuilder, formatFailures, getScanGaps, installInternalsHook } = require('../src/index.js');
 
 // Shared across the customRules tests below -- reported outcome depends on
 // whether ctx.document has a .my-widget element. Unlike every sibling
@@ -839,6 +839,108 @@ describe('A11yCoreBuilder', () => {
       expect(failures, JSON.stringify(failures.map((r) => r.locations))).to.have.length(2);
       const notices = (run.invocations || []).flatMap((i) => i.toolExecutionNotifications || []);
       expect(notices.map((n) => n.message.text), 'no frame reported as not scanned').to.deep.equal([]);
+    });
+  });
+});
+
+describe('@surea11y/core 1.12', () => {
+  const FIXTURE = 'cypress/fixtures/internals-components.html';
+  const outcomeOf = (result, ruleId) => {
+    const check = result.checksResults.find((r) => r.ruleId === ruleId);
+    return check ? check.outcome : undefined;
+  };
+
+  it('wcagLevel() reaches the engine: a contrast check at AA reports 1.4.3 and no 1.4.6', () => {
+    cy.visit('cypress/fixtures/well-formed.html');
+    new A11yCoreBuilder().withRules('contrast-computable').wcagLevel('aa').analyze().then((results) => {
+      expect(results.engine.wcagLevel).to.equal('AA');
+      expect(results.rulesResults.map((r) => r.ruleId)).to.deep.equal(['wcag-1.4.3-contrast-minimum']);
+      expect(results.checksResults.map((r) => r.ruleId)).to.deep.equal(['contrast-computable']);
+    });
+  });
+
+  it('a scan under forced colors emulated through the DevTools protocol records engine.environment.forcedColors', () => {
+    // Cypress.automation() runs when called, so it goes in a .then() to run
+    // in its place in the command queue.
+    const emulate = (value) => cy.then(() => Cypress.automation('remote:debugger:protocol', {
+      command: 'Emulation.setEmulatedMedia',
+      params: { features: [{ name: 'forced-colors', value }] }
+    }));
+    emulate('active');
+    cy.visit('cypress/fixtures/well-formed.html');
+    new A11yCoreBuilder().withRules('contrast-minimum').analyze().then((results) => {
+      expect(results.engine.environment.forcedColors).to.equal('active');
+    });
+    emulate('');
+    new A11yCoreBuilder().withRules('contrast-minimum').analyze().then((results) => {
+      expect(results.engine.environment.forcedColors).to.equal('none');
+    });
+  });
+
+  it('without the internals hook, a component named through private internals is a question, a role set only there is not seen, and the Command Log says how to read them', () => {
+    cy.spy(Cypress, 'log').log(false).as('log');
+    cy.visit(FIXTURE);
+    new A11yCoreBuilder().include('#check').withRules('binary-control-name-present').analyze().then((results) => {
+      expect(results.engine.environment.internalsHook).to.equal(undefined);
+      expect(outcomeOf(results, 'binary-control-name-present')).to.equal('cantTell');
+    });
+    cy.get('@log').should((log) => {
+      const notes = log.getCalls().filter((c) => c.args[0] && c.args[0].name === 'surea11y scan note');
+      expect(notes).to.have.length(1);
+      expect(notes[0].args[0].message).to.match(/1 custom element was asked about .*installInternalsHook\(\)/);
+    });
+    new A11yCoreBuilder().include('#toggle').withRules('binary-control-name-present').analyze().then((results) => {
+      expect(outcomeOf(results, 'binary-control-name-present')).to.equal('notApplicable');
+    });
+  });
+
+  it('installInternalsHook as onBeforeLoad reads them: the named component passes, and the unnamed switch is checked and fails', () => {
+    cy.visit(FIXTURE, { onBeforeLoad: installInternalsHook });
+    new A11yCoreBuilder().include('#check').analyze().then((results) => {
+      expect(results.engine.environment.internalsHook).to.equal('early');
+      expect(outcomeOf(results, 'binary-control-name-present')).to.equal('pass');
+      expect(outcomeOf(results, 'aria-required-attr')).to.equal('pass');
+    });
+    new A11yCoreBuilder().include('#toggle').withRules('binary-control-name-present').analyze().then((results) => {
+      expect(outcomeOf(results, 'binary-control-name-present')).to.equal('fail');
+    });
+    new A11yCoreBuilder().include('#named-toggle').withRules('binary-control-name-present').analyze().then((results) => {
+      expect(outcomeOf(results, 'binary-control-name-present')).to.equal('pass');
+    });
+  });
+
+  it('installInternalsHook() throws a TypeError for anything but a window', () => {
+    for (const bad of [null, {}, 'window']) {
+      // Checked by name: Chai's TypeError is another window's.
+      let thrown;
+      try { installInternalsHook(bad); } catch (e) { thrown = e; }
+      expect(thrown && thrown.name).to.equal('TypeError');
+      expect(thrown.message).to.match(/^installInternalsHook\(\): expected the app's window/);
+    }
+    expect(A11yCoreBuilder.installInternalsHook).to.be.a('function');
+  });
+
+  it('plannedChecks() and plannedCriteria() list, through the plugin, what analyze() then reports', () => {
+    cy.visit('cypress/fixtures/basic.html');
+    const builder = new A11yCoreBuilder().withWcag('2.2', 'AA');
+    const ids = (list, key) => list.map((e) => e[key]).sort();
+    builder.analyze().then((results) => {
+      builder.plannedChecks().then((checks) => {
+        expect(ids(checks, 'ruleId')).to.deep.equal(ids(results.checksResults, 'ruleId'));
+      });
+      builder.plannedCriteria().then((criteria) => {
+        expect(ids(criteria, 'id')).to.deep.equal(ids(results.rulesResults, 'ruleId'));
+      });
+    });
+  });
+
+  it('plannedChecks() sends a live custom rule and a pack to Node', () => {
+    const builder = new A11yCoreBuilder()
+      .withPacks('./cypress/fixtures/acme-pack.js')
+      .withCustomRules({ ...MY_ORG_CUSTOM_RULE, meta: { ...MY_ORG_CUSTOM_RULE.meta, tags: ['custom', 'wcag2a', 'wcag111'] } })
+      .withRules(['my-org-custom-rule', 'img-alt-present']);
+    builder.plannedChecks().then((checks) => {
+      expect(checks.map((c) => c.ruleId).sort()).to.deep.equal(['img-alt-present', 'my-org-custom-rule']);
     });
   });
 });

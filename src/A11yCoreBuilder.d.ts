@@ -2,7 +2,7 @@
 
 import type * as Core from '@surea11y/core';
 import type { Outcome, Severity, Confidence } from '@surea11y/core';
-import type { ScanGap, OccurrenceLocation, ScanResultLike, WcagVersion, WcagLevel } from '@surea11y/binding-base';
+import type { ScanGap, ScanNote, OccurrenceLocation, ScanResultLike, WcagVersion, WcagLevel, WcagLevelInput, PlannedCheck, PlannedCriterion } from '@surea11y/binding-base';
 
 // The result shapes are @surea11y/core's own types (shipped with core since
 // 1.9.0, and checked by core's tests against real scan results), so they
@@ -31,7 +31,7 @@ export type {
   EngineErrorCode
 } from '@surea11y/core';
 
-export type { ScanGap, OccurrenceLocation, WcagVersion, WcagLevel };
+export type { ScanGap, ScanNote, OccurrenceLocation, WcagVersion, WcagLevel, WcagLevelInput, PlannedCheck, PlannedCriterion };
 
 export type Category = Core.RuleMeta['category'];
 /** An open set: core can add a value in a minor release. */
@@ -104,6 +104,9 @@ export class A11yCoreBuilder {
    */
   constructor(opts?: { url?: string });
 
+  /** The same as the exported installInternalsHook(). */
+  static installInternalsHook(win?: Window): void;
+
   /**
    * Scope the scan to one region. Call multiple times for a multi-region
    * union. A selector that matches no element scans nothing (the result's
@@ -141,7 +144,7 @@ export class A11yCoreBuilder {
    * runs those of WCAG 2.2's A and AA criteria. withTags()/withRules() add
    * to them. A later call replaces the target.
    */
-  withWcag(version: WcagVersion | 2.0 | 2.1 | 2.2, level?: WcagLevel): this;
+  withWcag(version: WcagVersion | 2.0 | 2.1 | 2.2, level?: WcagLevelInput): this;
   /** Also run the best-practice rules, those that name no WCAG criterion. */
   withBestPractices(enabled?: boolean): this;
   /**
@@ -155,13 +158,13 @@ export class A11yCoreBuilder {
    * rules run: `.withRules('contrast-computable').wcagLevel('AA')` reports
    * 1.4.3 and not 1.4.6. Any case; null clears it. A later call replaces it.
    */
-  wcagLevel(level: WcagLevel | 'a' | 'aa' | 'aaa' | null): this;
+  wcagLevel(level: WcagLevelInput | null): this;
   /**
    * Where the driver-based bindings send their scan-gap warnings. This
    * binding prints none (the Command Log shows each gap), so it changes
    * nothing here; it is typed so shared code that calls it compiles.
    */
-  logger(fn: ((gap: import('@surea11y/binding-base').ScanGap, result: A11yCoreResult) => void) | null): this;
+  logger(fn: ((entry: ScanGap | ScanNote, result: A11yCoreResult) => void) | null): this;
   /** Merge arbitrary engineOptions (locale, contrast.mode, policyContract, ...). */
   options(partialEngineOptions: Record<string, unknown>): this;
   /** Register one or more custom rules for just this scan. Call multiple times to accumulate. */
@@ -178,6 +181,15 @@ export class A11yCoreBuilder {
   frames(enabled?: boolean): this;
   /** Opt in to resolving each fail/cantTell occurrence's selector to a live DOM Element. */
   elementRef(enabled?: boolean): this;
+
+  /**
+   * The rules this scan will run, worked out in Node by
+   * @surea11y/cypress/plugin (core's getChecksForRunOnly()). A chainable,
+   * as analyze() is.
+   */
+  plannedChecks(): Cypress.Chainable<PlannedCheck[]>;
+  /** The criteria this scan will report in rulesResults (core's getRulesForRunOnly()), through the plugin. A chainable. */
+  plannedCriteria(): Cypress.Chainable<PlannedCriterion[]>;
 
   /**
    * Runs the scan. Returns a Cypress chainable -- use `.then()`, never
@@ -225,3 +237,20 @@ export function getScanGaps(result: A11yCoreResult | ScanResultLike): ScanGap[];
  * `document.querySelector()` takes; use `.elementRef(true)` for the element.
  */
 export function formatOccurrenceLocation(occurrence: OccurrenceLocation | null | undefined): string;
+
+/**
+ * How one scan result's page was scanned, which a gap doesn't cover:
+ * `forced-colors` when it was shown in forced colors, and `internals-hook`
+ * when the scan asked about web components it could have read with the
+ * internals hook.
+ */
+export function getScanNotes(result: A11yCoreResult | ScanResultLike): ScanNote[];
+
+/**
+ * Installs @surea11y/core's opt-in internals hook, so a scan can read the
+ * names, states and roles web components set through a private
+ * ElementInternals. With no argument (in the support file), on every visit
+ * from then on, before the app's scripts; with a window, in that window, for
+ * `cy.visit(url, { onBeforeLoad: installInternalsHook })`.
+ */
+export function installInternalsHook(win?: Window): void;

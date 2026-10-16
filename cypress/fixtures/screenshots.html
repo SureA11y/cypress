@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Screenshots of flagged elements</title>
+<style>
+  body { margin: 0; font: 16px sans-serif }
+  header { position: sticky; top: 0; background: #036; color: #fff; padding: 20px; z-index: 5 }
+  #scroller { height: 120px; overflow: auto; border: 1px solid }
+</style>
+</head>
+<body>
+<header>Header</header>
+<main>
+  <h1>Screenshots</h1>
+  <!-- Transparent images, so each shows its own background colour. -->
+  <img id="top" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" width="80" height="40" style="background:rgb(255,165,0)">
+  <p style="height:1200px">spacer</p>
+  <div id="scroller"><p style="height:400px">inner</p><img id="inner" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" width="50" height="30" style="background:rgb(0,128,0)"></div>
+  <x-card></x-card>
+  <img id="hidden" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" style="display:none">
+  <div style="position:absolute;left:-9999px"><img id="away" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" width="10" height="10"></div>
+  <iframe id="child" title="Child" src="screenshots-frame.html" width="400" height="300" style="border:10px solid #ccc;padding:5px"></iframe>
+  <p style="height:800px">after</p>
+</main>
+<script>
+  customElements.define('x-card', class extends HTMLElement {
+    constructor() { super(); this.attachShadow({ mode: 'open' }).innerHTML = '<img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" width="60" height="60" style="background:rgb(128,0,128)">'; }
+  });
+</script>
+</body>
+</html>

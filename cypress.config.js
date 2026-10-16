@@ -3,7 +3,9 @@
 const { defineConfig } = require('cypress');
 const webpackPreprocessor = require('@cypress/webpack-batteries-included-preprocessor');
 const surea11y = require('./plugin.js');
+const fs = require('fs');
 const { renderSarifReport } = require('@surea11y/core/sarif');
+const { decodePng } = require('@surea11y/binding-base/src/png.js');
 
 module.exports = defineConfig({
   e2e: {
@@ -40,7 +42,16 @@ module.exports = defineConfig({
       surea11y(on, config);
       // For the tests: core's SARIF reporter hashes with Node's crypto, so it
       // runs in Node rather than in the spec.
-      on('task', { renderSarif: (results) => renderSarifReport(results) });
+      on('task', {
+        renderSarif: (results) => renderSarifReport(results),
+        // For the screenshots specs: the colour at a point of a saved PNG,
+        // read in Node with binding-base's own decoder.
+        pngColourAt({ path, x, y }) {
+          const png = decodePng(fs.readFileSync(path));
+          const at = Math.floor(y) * png.stride + Math.floor(x) * png.bpp;
+          return { width: png.width, height: png.height, colour: Array.from(png.rows.subarray(at, at + 3)) };
+        }
+      });
     }
   }
 });

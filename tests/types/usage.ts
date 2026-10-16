@@ -8,6 +8,8 @@ import {
   A11yCoreBuilder,
   formatFailures,
   getScanGaps,
+  getScanNotes,
+  installInternalsHook,
   formatOccurrenceLocation,
   type A11yCoreResult,
   type A11yCoreMultiFrameResult,
@@ -43,6 +45,14 @@ for (const gap of gaps) {
   else gap.selectors.join(', ');
 }
 const where: string = formatOccurrenceLocation(occurrence);
+for (const note of getScanNotes(result)) {
+  if (note.kind === 'internals-hook') note.elementCount.toFixed();
+  else note.message.toUpperCase();
+}
+
+installInternalsHook();
+A11yCoreBuilder.installInternalsHook();
+cy.visit('/', { onBeforeLoad: installInternalsHook });
 
 const code: EngineErrorCode = 'INVALID_ENGINE_OPTIONS';
 const wcag: WcagVersion = '2.2';
@@ -55,6 +65,7 @@ const config = defineConfig({
   }
 });
 const task: 'surea11y:packScript' = surea11yPlugin.TASK;
+const plannedTask: 'surea11y:planned' = surea11yPlugin.PLANNED_TASK;
 
 new A11yCoreBuilder()
   .include('main')
@@ -62,7 +73,8 @@ new A11yCoreBuilder()
   .withBestPractices()
   .includeMode('or')
   .wcagLevel('AA')
-  .logger((gap, frame) => { void `${frame.url}: ${gap.kind} ${gap.message}`; })
+  .wcagLevel('aa')
+  .logger((entry, frame) => { void `${frame.url}: ${entry.kind} ${entry.message}`; })
   .withTags(['wcag2a', 'wcag2aa'])
   .withPacks(['@acme/a11y-policy', './packs/house-rules.js'])
   .elementRef(true)
@@ -76,4 +88,7 @@ new A11yCoreBuilder()
     }
   });
 
-export { asCore, version, scanned, skipped, hosts, path, element, headroom, message, where, code, config, task };
+new A11yCoreBuilder().withWcag('2.2', 'aa').plannedChecks().then((checks) => checks.map((c) => c.ruleId));
+new A11yCoreBuilder().withWcag('2.2', 'aa').plannedCriteria().then((criteria) => criteria.map((r) => r.id));
+
+export { plannedTask, asCore, version, scanned, skipped, hosts, path, element, headroom, message, where, code, config, task };

@@ -8,7 +8,7 @@ A Cypress binding for [`@surea11y/core`](https://github.com/SureA11y/core) — s
 npm install @surea11y/cypress cypress
 ```
 
-`@surea11y/core` 1.11.1 or later comes with it as a peer dependency, as Cypress does: npm 7 and later, and pnpm 8 and later, install it for you, so the line above is all you need. With Yarn 1 or npm 6, which don't install peers, add `@surea11y/core` to that line.
+`@surea11y/core` 1.12.0 or later comes with it as a peer dependency, as Cypress does: npm 7 and later, and pnpm 8 and later, install it for you, so the line above is all you need. With Yarn 1 or npm 6, which don't install peers, add `@surea11y/core` to that line.
 
 Being a peer means your project and this binding share one copy of core. That matters as soon as your project uses core directly, to write a SARIF log or an HTML report (`@surea11y/core/sarif`, `/report`), read the rule catalogue, or keep a baseline: those read results with the same core that produced them, so a report never labels a finding with another release's rules. It holds when you bring your own core too: a linked checkout (`file:../core`), a monorepo, a fork, or a pinned release. Before 1.4.0, core was a regular dependency, and a project whose core differed from the binding's got a second copy without a word; such a project needed `"overrides": { "@surea11y/core": "$@surea11y/core" }` in its `package.json`, which it can now drop.
 
@@ -41,7 +41,7 @@ it('has no accessibility violations', () => {
 });
 ```
 
-`results` is `@surea11y/core`'s own native result shape (and `results.engine.version` says which core release produced it, for example `"1.11.1"`) — see [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md) — not the `violations`/`passes`/`incomplete`/`inapplicable` shape used by other popular accessibility testing tools for Cypress. The builder's *method names* are modeled on common conventions in this space for migration familiarity; the richer result schema is kept as-is.
+`results` is `@surea11y/core`'s own native result shape (and `results.engine.version` says which core release produced it, for example `"1.12.0"`; from 1.4.0 this package needs core 1.12.0 or later, see [What changes with `@surea11y/core` 1.12](#what-changes-with-surea11ycore-112)) — see [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md) — not the `violations`/`passes`/`incomplete`/`inapplicable` shape used by other popular accessibility testing tools for Cypress. The builder's *method names* are modeled on common conventions in this space for migration familiarity; the richer result schema is kept as-is.
 
 **No `{ page }`/`{ browser }`/`{ driver }` constructor argument**, unlike most driver-based bindings — there's no such handle in Cypress. `cy` is ambient in every spec file and *is* the driver; `A11yCoreBuilder` calls `cy.window()` itself inside `analyze()`.
 
@@ -62,7 +62,7 @@ Also see `examples/basic-scan.cy.js` for a runnable scan-and-log spec (`npm run 
 
 `.include(selector)` scopes the scan to the elements it matches. A selector that matches no element scans nothing: every rule reports `notApplicable`, `results.contextMatch` says the scope was not found (`{ elementCount: 0, unmatchedSelectors: ['#main'] }`), and the Command Log shows a `surea11y scan gap` entry (see below). With several `.include()` calls, one that matches nothing is named there while the others are scanned. Before `@surea11y/core` 1.10.0 such a scope silently fell back to the whole page.
 
-`.withWcag(version, level)` selects by conformance target: `.withWcag('2.2', 'AA')` runs the rules for WCAG 2.2's Level A and AA criteria, by the level each criterion has in that version (4.1.1 Parsing, which 2.2 removed, is part of a `'2.1'` target and not of a `'2.2'` one). `.withBestPractices()` adds the rules that name no WCAG criterion, such as `region` and `heading-order`; on its own it runs only those. `.withRules()` and `.withTags()` add to a target's rules, and the disable methods apply after. A version other than `'2.0'`, `'2.1'` or `'2.2'`, or a level other than `'A'`, `'AA'` or `'AAA'`, throws a `TypeError` with `code: 'INVALID_RUN_ONLY'` at the call. Both need `@surea11y/core` 1.11 or later.
+`.withWcag(version, level)` selects by conformance target: `.withWcag('2.2', 'AA')` runs the rules for WCAG 2.2's Level A and AA criteria, by the level each criterion has in that version (4.1.1 Parsing, which 2.2 removed, is part of a `'2.1'` target and not of a `'2.2'` one). `.withBestPractices()` adds the rules that name no WCAG criterion, such as `region` and `heading-order`; on its own it runs only those. `.withRules()` and `.withTags()` add to a target's rules, and the disable methods apply after. The level is read in any case (`'aa'` is `'AA'`). A version other than `'2.0'`, `'2.1'` or `'2.2'`, or a level other than A, AA or AAA, throws a `TypeError` with `code: 'INVALID_RUN_ONLY'` at the call. Both need `@surea11y/core` 1.11 or later.
 
 `.withTags()`/`.disableRules()` have counterparts: `.withRules([...])` (only run these specific rule IDs) and `.disableTags([...])` (never run rules carrying any of these tags). All four compose the same way similar allow/deny-list options do in other accessibility testing tools, with one non-obvious rule worth knowing: a "disable" always wins over a "with" on the same ID/tag, and combining `.withRules()` **and** `.withTags()` together requires a rule to satisfy *both* (`@surea11y/core`'s default `includeMode: 'and'` — see [`ENGINE_OPTIONS.md`](https://github.com/SureA11y/core/blob/main/docs/ENGINE_OPTIONS.md)), not either one, unless you ask for that with `.includeMode('or')` (below).
 
@@ -89,7 +89,19 @@ new A11yCoreBuilder()
   .then((results) => { /* ... */ });
 ```
 
-Without `.wcagLevel('AA')`, that scan reports 1.4.6 as well, so a site that meets AA can show a failing AAA criterion it never aimed for. With it, the scan reports 1.4.3 alone, and `results.engine.wcagLevel` says `'AA'`. A `.withWcag()` target already implies its level; `.wcagLevel()` is for selections that don't, and wins when both are given, as it does over a level given through `.options()`. `'A'`, `'AA'` or `'AAA'` in any case is accepted. Anything else throws a `TypeError` with `code: 'INVALID_ENGINE_OPTIONS'` at the call, and `null` clears it. Needs the `@surea11y/core` release after 1.11.1.
+Without `.wcagLevel('AA')`, that scan reports 1.4.6 as well, so a site that meets AA can show a failing AAA criterion it never aimed for. With it, the scan reports 1.4.3 alone, and `results.engine.wcagLevel` says `'AA'`. A `.withWcag()` target already implies its level; `.wcagLevel()` is for selections that don't, and wins when both are given, as it does over a level given through `.options()`. `'A'`, `'AA'` or `'AAA'` in any case is accepted. Anything else throws a `TypeError` with `code: 'INVALID_ENGINE_OPTIONS'` at the call, and `null` clears it. Needs `@surea11y/core` 1.12.0 or later.
+
+`.plannedChecks()` and `.plannedCriteria()` say what a scan *will* check before you run it: the rules it runs (entries with `ruleId`) and the criteria it reports in `rulesResults` (entries with `id`), from core's catalog with the same selection and options. The catalog is read in Node, so they go through `@surea11y/cypress/plugin` (register it as [for packs](#scanning-with-packs-standards-checklists-and-your-own-rules)) and return a chainable, like `.analyze()`. Use them to record what a run covered, or to catch a selection that runs nothing, which would otherwise look like a clean scan:
+
+```js
+const builder = new A11yCoreBuilder().withTags('forms').withRules('contrast-computable');
+builder.plannedChecks().then((checks) => {
+  expect(checks, 'This selection runs no rule. Did you mean .includeMode("or")?').not.to.be.empty;
+});
+builder.analyze().then((results) => { /* ... */ });
+```
+
+Packs named in `.withPacks()` and custom rules, live functions included, count as they do in the scan.
 
 `.exclude(selector)` above excludes globally. Pass a second argument to scope it to specific rule IDs instead: `.exclude('.mat-select', { rules: ['aria-required-children'] })` skips `.mat-select` for that rule only — every other rule still sees it. Global and rule-scoped `.exclude()` calls compose freely.
 
@@ -123,7 +135,9 @@ it('has no accessibility violations', () => {
 });
 ```
 
-`getScanGaps(result)` lists what one scan result says it left out, which its `checksResults` alone would pass over as clean: `{ kind: 'context-not-found' }` when the `.include()` scope matched no element, `'context-partly-not-found'` when some of several did not, one `'custom-rule-skipped'` (with `rule: { id, reason }`) per custom rule the engine did not run, and one `'pack-skipped'` (with `pack: { name, reason }`, from `results.skippedPacks`) per pack the page did not run (see [Scanning with packs](#scanning-with-packs-standards-checklists-and-your-own-rules)). Each has a `message`. For a `.frames(true)` scan, call it on `topFrame` and on each scanned frame.
+`getScanGaps(result)` lists what one scan result says it left out, which its `checksResults` alone would pass over as clean: `{ kind: 'context-not-found' }` when the `.include()` scope matched no element, `'context-partly-not-found'` when some of several did not, one `'custom-rule-skipped'` (with `rule: { id, reason }`) per custom rule the engine did not run (a custom rule you excluded yourself with `.disableRules()` is listed in `skippedCustomRules` with `excluded: true`, and isn't a gap), and one `'pack-skipped'` (with `pack: { name, reason }`, from `results.skippedPacks`) per pack the page did not run (see [Scanning with packs](#scanning-with-packs-standards-checklists-and-your-own-rules)). Each has a `message`. For a `.frames(true)` scan, call it on `topFrame` and on each scanned frame.
+
+`getScanNotes(result)` says how the page was scanned, which a gap doesn't cover, and nothing was left out: `'forced-colors'` when the page was shown in [forced colors](#forced-colors), and `'internals-hook'` when the scan asked about web components it could have read with the [internals hook](#web-components-the-internals-hook).
 
 ### Readable console/CI output on failure
 
@@ -139,8 +153,10 @@ AssertionError: 1) button-name-present (serious): This button has no accessible 
 
 Part of the scan scope was not scanned: no element matched "#sidebar".
 
-Scanned with @surea11y/core 1.11.1.: expected 2 to equal 0
+Scanned with @surea11y/core 1.12.0.: expected 2 to equal 0
 ```
+
+Before the version line, it also prints the result's notes (`getScanNotes()`), such as a page shown in forced colors.
 
 An occurrence inside a shadow tree is located through its shadow hosts, as `#card >>> img`; `formatOccurrenceLocation(occurrence)` gives that same text for a message of your own. It is for a person to read, not a selector `document.querySelector()` takes.
 
@@ -157,13 +173,14 @@ surea11y error!  button-name-present (serious): on 1 Node
 surea11y error!  img-alt-present (serious): on 1 Node
 surea11y violation summary   2 accessibility issues were detected
 surea11y scan gap   Part of the scan scope was not scanned: no element matched "#sidebar".
+surea11y scan note  1 custom element was asked about because the scan could not read the name or states ...
 ```
 
 Click any `surea11y error!` row to highlight the flagged element(s) in the app preview (`$el`, each occurrence looked up in the scanned document, through its shadow hosts when it is inside a shadow tree), and its `consoleProps` (open the browser DevTools console after clicking the row) prints the full check object — `ruleId`/`severity`/`occurrences`/etc.
 
 This gives failing scans a readable, per-rule Command Log trace, rather than a bare `window`/`then` step. Entries are named `'surea11y error!'`/`'surea11y violation summary'` — distinguishable from similarly-named entries other accessibility plugins produce at a glance when multiple specs run in the same suite, while staying visually parallel enough to read as the same kind of thing.
 
-A `surea11y scan gap` entry (its `consoleProps` is the gap, as `getScanGaps()` returns it) appears when the `.include()` scope, or part of it, matched no element, or a custom rule or a pack did not run. Without it, a scan that scanned nothing would log nothing, like a clean one.
+A `surea11y scan gap` entry (its `consoleProps` is the gap, as `getScanGaps()` returns it) appears when the `.include()` scope, or part of it, matched no element, or a custom rule or a pack did not run. Without it, a scan that scanned nothing would log nothing, like a clean one. A `surea11y scan note` entry appears once per scan when the scan asked about web components it could have read with the [internals hook](#web-components-the-internals-hook).
 
 Purely additive to the Command Log — it never touches the value `.analyze()` resolves to, so it can't change any assertion's pass/fail outcome, and there's nothing to configure or disable. Combines with `.frames(true)`: each sub-frame's own findings are logged separately, scoped to that frame's own document (not the top page's).
 
@@ -233,6 +250,66 @@ new A11yCoreBuilder().elementRef(true).analyze().then((results) => {
 ```
 
 Unlike driver-based bindings (which hand back a driver-native `ElementHandle`/`WebElement`), Cypress has no such object of its own — its idiom is wrapping a raw DOM element with `cy.wrap(el)` to get a chainable back. `.elementRef(true)` resolves each occurrence to the AUT's own live `Element` (`occurrence.element`, a plain DOM `Element`, not a Cypress chainable) by looking its `selector` up in the scanned document, through its `shadowHostSelectors` first when it is inside a shadow tree, and you `cy.wrap()` it yourself when you need one. Combines with `.frames(true)`: each frame's occurrences resolve against that frame's own document. Not every occurrence has one target element — a page-wide finding can carry `selector: ""`, in which case `occurrence.element` is `null`.
+
+### Web components: the internals hook
+
+Many web components keep their `ElementInternals` in a private field and name themselves, set their states or give themselves a role through it:
+
+```js
+class SubscribeCheckbox extends HTMLElement {
+  #internals = this.attachInternals();
+  constructor() {
+    super();
+    this.#internals.ariaLabel = 'Subscribe';
+    this.#internals.ariaChecked = 'false';
+  }
+}
+```
+
+The browser exposes that name, but no page script can read it back, so by default the scan asks about such a component (`cantTell`) instead of judging it. A component that's a `switch` only through `this.#internals.role` isn't even asked about: the scan doesn't see its role, so it isn't checked at all.
+
+`installInternalsHook()` installs `@surea11y/core`'s opt-in hook, which records each component's internals for the scan to read. It has to run before the app's scripts. Call it once in your support file, and every visit from then on gets it, through Cypress's `window:before:load`:
+
+```js
+// cypress/support/e2e.js
+import { installInternalsHook } from '@surea11y/cypress';
+
+installInternalsHook();
+```
+
+Or for one visit, as `onBeforeLoad`:
+
+```js
+cy.visit('/settings', { onBeforeLoad: installInternalsHook });
+new A11yCoreBuilder().analyze().then((results) => {
+  expect(results.engine.environment.internalsHook).to.equal('early'); // the hook ran before the app's scripts
+});
+```
+
+With it, the checkbox above passes, an unnamed component that attaches internals fails like any unnamed control, and the switch is checked as a switch, so it fails without a name. `A11yCoreBuilder.installInternalsHook()` is the same function, as every binding's builder has it.
+
+- **Content Security Policy.** It runs the script with the app window's `eval`, which works because Cypress strips the app's Content Security Policy by default. If yours keeps it (`experimentalCspAllowList`) and forbids `eval`, the hook can't run.
+- **Frames inside the app don't get it**; `window:before:load` fires for the app's own window.
+- **For test and audit runs.** The hook wraps `HTMLElement.prototype.attachInternals` (components get the same internals back), adds a stack frame to errors thrown through it, and keeps its record under a global symbol, where any script on the page can read every component's internals. That's why it's opt-in.
+- **Without it**, the Command Log shows a `surea11y scan note` when the scan asked about such components, and `getScanNotes()` gives that note as `kind: 'internals-hook'`.
+
+### Forced colors
+
+A page shown in forced colors (Windows high contrast) draws in the user's colors, not its own. `results.engine.environment.forcedColors` says which it was: `'active'` or `'none'`. To check a page under forced colors on purpose, emulate it through the DevTools protocol before visiting, in Chrome, Edge or Electron:
+
+```js
+// Cypress.automation() runs as soon as it's called, so put it in the command queue
+cy.then(() => Cypress.automation('remote:debugger:protocol', {
+  command: 'Emulation.setEmulatedMedia',
+  params: { features: [{ name: 'forced-colors', value: 'active' }] }
+}));
+cy.visit('/');
+new A11yCoreBuilder().analyze().then((results) => {
+  expect(results.engine.environment.forcedColors).to.equal('active');
+});
+```
+
+`remote:debugger:protocol` is only there in Chromium-family browsers, so not in Firefox. The contrast rules still measure the page's own colors under forced colors, since WCAG judges contrast in those, so results match a scan with forced colors off; a contrast finding the engine couldn't measure that way carries `details.forcedColors: true`. When forced colors were active, `formatFailures()` adds a line saying so, since it's easy to miss on a CI agent with high contrast turned on.
 
 ### Registering a custom rule at runtime
 
@@ -332,6 +409,22 @@ Every occurrence already carries `selector` and (with `.elementRef(true)`, above
 
 An occurrence inside a shadow tree also carries `shadowHostSelectors`: the selectors of the shadow hosts leading to it, outermost first, each resolved in the tree that holds it. Its `selector` then holds only inside the last host's shadow root, so `document.querySelector(selector)` finds another element or none, and its `structuralPath` is `null`. `.elementRef(true)`, the Command Log and `formatFailures()` all follow the hosts (`@surea11y/core` 1.10.0 and later). See [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md) for the full field description.
 
+## What changes with `@surea11y/core` 1.12
+
+This release needs `@surea11y/core` 1.12.0. What a scan through this binding shows differently (core's [`CHANGELOG.md`](https://github.com/SureA11y/core/blob/main/CHANGELOG.md) has the full list):
+
+- **An empty heading now fails an unscoped scan.** `empty-heading` used to ask about a heading with no accessible name; it now fails it. It's a best practice, so it runs in a scan that selects nothing and with `.withBestPractices()`, not under `.withWcag()`, tags or a profile. A gate on a page with `<h2></h2>` that asserted no failures now fails: fix the heading, or scan a WCAG target.
+- **Scans that pick rules report their criteria.** `.withRules('img-alt-present')`, a non-WCAG tag or `.withBestPractices()` now fill `rulesResults` with the WCAG criteria those rules belong to, where it was empty. A criterion whose other rules weren't selected is `cantTell` (`reasonCode` `composite.rollup.cantTell.notSelectedChild`), and each check's `rollupIds` names the criteria it was added for. `.wcagLevel()` keeps those criteria to a level.
+- **Four rules count towards more criteria**, as W3C's ACT rules map them: `input-image-alt-present` adds 4.1.2, `aria-roles-valid` 1.3.1, `link-name-present` 2.4.9 (AAA), and `meta-refresh-timing-absent` 2.2.4 and 3.2.5 (AAA). The findings don't change; the 1.3.1 and 4.1.2 rollups can now fail where they passed.
+- **Unnamed custom elements are questions.** A defined custom element with no visible name may name itself through `ElementInternals`, so it's `cantTell` (`name_internals`) where it used to fail. [`installInternalsHook()`](#web-components-the-internals-hook) lets the engine decide.
+- **`engine.wcagLevel`** records the level a scan was gated by, and [`.wcagLevel()`](#usage) sets it.
+- **`engine.environment.forcedColors`** records whether the page was in [forced colors](#forced-colors).
+- **A custom rule you exclude** isn't a scan gap any more, so `.disableRules()` of one logs no `surea11y scan gap`.
+- **Rule IDs in another case select their rule**: `.withRules('IMG-ALT-PRESENT')` used to throw `INVALID_RUN_ONLY` or be ignored.
+- **`runOnly.optInTags` on its own throws** `INVALID_RUN_ONLY`; it was accepted and did nothing. Opt-in rules are unlocked with `.options({ optInRules })`.
+- **A finding in a shadow tree is located through its hosts**, as `#card >>> img`, in core's HTML report, SARIF, JUnit and baselines, as `formatFailures()` already did.
+- **An inline `policyContract`** with an unknown value in `allowedOutcomes` or `allowedConfidence` drops that value with a warning, where it turned every check into `cantTell`.
+
 ## What changes with `@surea11y/core` 1.11
 
 The binding passes rule IDs, tags and options through to the engine, so these show in results without a change here (see core's [`CHANGELOG.md`](https://github.com/SureA11y/core/blob/main/CHANGELOG.md) for the full list):
@@ -344,7 +437,7 @@ The binding passes rule IDs, tags and options through to the engine, so these sh
 
 ## TypeScript
 
-`src/A11yCoreBuilder.d.ts` (re-exported from `src/index.d.ts`, wired up via `package.json`'s `types` field) ships types for the whole builder API, `formatFailures()`, `getScanGaps()` and `formatOccurrenceLocation()`. The result shapes (`A11yCoreResult`, `CheckResult`, `Occurrence`, `CompositeResult`, etc.) are built on the types `@surea11y/core` ships, which follow [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md), adding only `occurrence.element` (for `.elementRef(true)`) and the `.frames(true)` shapes. `EngineErrorCode`, `ScanGap` and the other names are exported too, and so are `withWcag()` (`WcagVersion`, `WcagLevel`) and `withPacks()`, which takes module names; `@surea11y/cypress/plugin` has its own types. Code that handles every `ScanGap` kind it knows and treats the rest in an `else` branch needs a branch for `'pack-skipped'`, which carries `pack` rather than `selectors`. `tests/types.test.js` compiles a typical spec against them. `analyze()` is typed `Cypress.Chainable<A11yCoreResult | A11yCoreMultiFrameResult>` — narrow on `'topFrame' in results` (or cast, if you already know which mode you called) to get the specific shape back.
+`src/A11yCoreBuilder.d.ts` (re-exported from `src/index.d.ts`, wired up via `package.json`'s `types` field) ships types for the whole builder API, `formatFailures()`, `getScanGaps()` and `formatOccurrenceLocation()`. The result shapes (`A11yCoreResult`, `CheckResult`, `Occurrence`, `CompositeResult`, etc.) are built on the types `@surea11y/core` ships, which follow [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md), adding only `occurrence.element` (for `.elementRef(true)`) and the `.frames(true)` shapes. `EngineErrorCode`, `ScanGap`, `ScanNote` and the other names are exported too, and so are `withWcag()` and `wcagLevel()` (`WcagVersion`, `WcagLevelInput`), `plannedChecks()`/`plannedCriteria()` (chainables of `PlannedCheck[]` and `PlannedCriterion[]`), `getScanNotes()`, `installInternalsHook()`, and `withPacks()`, which takes module names; `@surea11y/cypress/plugin` has its own types. Code that handles every `ScanGap` kind it knows and treats the rest in an `else` branch needs a branch for `'pack-skipped'`, which carries `pack` rather than `selectors`. `tests/types.test.js` compiles a typical spec against them. `analyze()` is typed `Cypress.Chainable<A11yCoreResult | A11yCoreMultiFrameResult>` — narrow on `'topFrame' in results` (or cast, if you already know which mode you called) to get the specific shape back.
 
 ## Relationship to the sibling bindings
 

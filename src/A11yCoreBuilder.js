@@ -11,8 +11,24 @@ const {
   getScanGaps,
   getScanNotes,
   queryOccurrenceElement,
-  toReconstructableSource
+  toReconstructableSource,
+  planScreenshots,
+  screenshotFrameKey,
+  screenshotToken,
+  prepareElementScreenshot,
+  releaseElementScreenshot
 } = require('@surea11y/binding-base');
+
+// Where .screenshots() pictures go without `dir`, under Cypress's own
+// screenshots folder.
+const SCREENSHOTS_FOLDER = 'surea11y';
+
+// binding-base's in-page screenshots step, run in a window of the app: the
+// spec reaches it directly, so it runs there from its source, as the scan
+// does (see _runInWindow()), with no serialization in between.
+function evaluateInFrame(win, fn, args) {
+  return win.eval('(' + fn.toString() + ')')(...args);
+}
 
 let hookRegistered = false;
 
@@ -154,6 +170,12 @@ function installInternalsHook(win) {
  * the box. See `_logFindings()` below for the full rationale (including why
  * this binding needed it added explicitly rather than getting it for free).
  *
+ * Opt in to a picture of each element the scan flags with `.screenshots()`
+ * (binding-base's option, see its README): each occurrence considered gets
+ * a `screenshot` field, `{ path, box }` for the picture, a PNG Cypress saved
+ * under its screenshots folder (in `surea11y/`, or in `dir` when given), or
+ * `{ skipped }` saying why there is none. See `_captureScreenshots()`.
+ *
  * Register your own rule(s) for just this scan with `.withCustomRules()`
  * (surea11y's `engineOptions.customRules` escape hatch -- see surea11y's
  * docs/ENGINE_OPTIONS.md).
@@ -167,8 +189,8 @@ function installInternalsHook(win) {
  * top of the first scan's scope rather than replacing it (intentional for
  * "call include() several times for one scan" -- but a footgun if you hold
  * one instance across multiple assertions). reportOnly()/frames()/
- * elementRef()/withWcag()/withBestPractices() are the exception: each call
- * replaces the previous value.
+ * elementRef()/screenshots()/withWcag()/withBestPractices() are the
+ * exception: each call replaces the previous value.
  */
 class A11yCoreBuilder extends A11yCoreBuilderBase {
   /** The same as the exported installInternalsHook(), as every binding's builder has it. */
@@ -293,20 +315,131 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
 
     // cy.window() gives a live reference to the AUT's real `window` -- see
     // this class's own header comment for why that alone isn't enough to
-    // scan it correctly, and what _runInWindow() does about it. Everything
-    // below is synchronous DOM work, so a plain .then() (no nested
-    // cy-command chaining) is all that's needed.
+    // scan it correctly, and what _runInWindow() does about it. The scans
+    // are synchronous DOM work. Each frame scanned is kept with its window
+    // and the <iframe>s leading to it, so .screenshots() can picture its
+    // elements through Cypress's own commands before reportOnly() trims the
+    // results; without it, the results are finished at once.
     return cy.window().then((win) => {
-      const topFrame = this._applyReportOnly(this._runInWindow(win, this._url, contextSelector, engineOptions, runOnly));
-      this._logFindings(topFrame, win);
-      this._logScanGaps(topFrame);
+      const scans = [{ win, framePath: [], result: this._runInWindow(win, this._url, contextSelector, engineOptions, runOnly) }];
+      if (this._scanFrames) this._collectFrames(win, engineOptions, runOnly, scans, []);
 
-      if (!this._scanFrames) return topFrame;
+      const finish = () => {
+        const results = scans.map((scan) => {
+          if (!scan.win) return scan.failed;
+          const result = this._applyReportOnly(scan.result);
+          this._logFindings(result, scan.win);
+          this._logScanGaps(result);
+          return result;
+        });
+        return this._scanFrames ? { topFrame: results[0], frames: results.slice(1) } : results[0];
+      };
+      if (!this._screenshots) return finish();
 
-      const frames = [];
-      this._collectFrames(win, engineOptions, runOnly, frames);
-      return { topFrame, frames };
+      // A scan's max and file names count from its first frame.
+      this._screenshotScan = { taken: 0, names: new Map() };
+      let chain = cy.wrap(null, { log: false });
+      for (const scan of scans) {
+        if (scan.win) chain = chain.then(() => this._captureScreenshots(scan.result, scan.win, scan.framePath));
+      }
+      return chain.then(finish);
     });
+  }
+
+  /**
+   * binding-base's screenshots step for one scanned window, through
+   * Cypress's own commands: binding-base's prepareElementScreenshot() gets
+   * each element ready in the page (scrolled into view, the box drawn, where
+   * it shows worked out), cy.screenshot() takes the viewport clipped to it,
+   * and releaseElementScreenshot() puts the page back. Returns a chainable;
+   * replaces the base class's Promise-based step, which awaits a picture
+   * a queued Cypress command can't give.
+   *
+   * Each picture is a PNG Cypress writes under its screenshots folder, at
+   * `<dir or surea11y>/element-<hash>.png`, named after where the element
+   * is (binding-base's screenshotFileName()), overwritten from run to run;
+   * the occurrence gets `{ path, box }` with the path Cypress reports.
+   * There is no `{ buffer }` form: a spec runs in the browser. A failure in
+   * the page (an <iframe> gone, an element that moved) is `capture-failed`
+   * on the occurrences, but a cy.screenshot() that fails fails the test, as
+   * any Cypress command does, before the page is put back.
+   * @param {object} result one frame's scan result, changed in place
+   * @param {Window} win the window it was scanned in
+   * @param {Array<{ frame: Window, iframe: Element }>} [framePath] the
+   *   <iframe>s leading to it from the app's window, outermost first
+   * @returns {Cypress.Chainable}
+   */
+  _captureScreenshots(result, win, framePath = []) {
+    const options = this._screenshots;
+    if (!options || !result || !Array.isArray(result.checksResults)) return cy.wrap(result, { log: false });
+    if (!this._screenshotScan) this._screenshotScan = { taken: 0, names: new Map() };
+
+    return cy
+      .wrap(null, { log: false })
+      .then(() => screenshotFrameKey({ evaluateInFrame, framePath }).then(
+        (key) => ({ key, error: null }),
+        (e) => ({ key: framePath.map((_, i) => `frame-${i}`), error: (e && e.message) || String(e) })
+      ))
+      .then(({ key, error }) => {
+        const { elements, unlocated } = planScreenshots(result, { outcomes: options.outcomes, frameKey: key });
+        for (const occurrence of unlocated) occurrence.screenshot = { skipped: 'no-element' };
+        let chain = cy.wrap(null, { log: false });
+        for (const element of elements) {
+          chain = chain.then(() => this._screenshotElement(element, win, framePath, error));
+        }
+        return chain.then(() => result);
+      });
+  }
+
+  /** One element of _captureScreenshots(): its picture, or why there is none, on each of its occurrences. */
+  _screenshotElement(element, win, framePath, frameError) {
+    const options = this._screenshots;
+    const scan = this._screenshotScan;
+    const give = (screenshot) => {
+      for (const occurrence of element.occurrences) occurrence.screenshot = screenshot;
+    };
+    if (frameError) return give({ skipped: 'capture-failed', error: frameError });
+    if (scan.taken >= options.max) return give({ skipped: 'max-reached' });
+
+    const token = screenshotToken();
+    return cy
+      .wrap(null, { log: false })
+      .then(() => prepareElementScreenshot({ evaluateInFrame, frame: win, framePath, element, options, token }))
+      .then((ready) => {
+        if (ready.skipped) return give(ready.error ? { skipped: ready.skipped, error: ready.error } : { skipped: ready.skipped });
+        let saved = null;
+        return cy
+          .screenshot(this._screenshotName(element), {
+            capture: 'viewport',
+            clip: { x: ready.clip.x, y: ready.clip.y, width: ready.clip.width, height: ready.clip.height },
+            overwrite: true,
+            log: false,
+            onAfterScreenshot(_el, props) {
+              saved = props.path;
+            }
+          })
+          .then(() => releaseElementScreenshot({ evaluateInFrame, frame: win, framePath, token }))
+          .then(() => {
+            scan.taken += 1;
+            give({ path: saved, box: ready.box, ...(ready.cropped ? { cropped: true } : {}) });
+          });
+      });
+  }
+
+  /**
+   * The screenshot's name for cy.screenshot(), without `.png`: in `dir`, or
+   * in `surea11y/`, as binding-base names the element. Two elements whose
+   * hashes collide in one scan get their own files, the second with a number.
+   */
+  _screenshotName(element) {
+    const names = this._screenshotScan.names;
+    let name = element.name;
+    for (let n = 2; names.has(name) && names.get(name) !== element.key; n++) {
+      name = element.name.replace(/\.png$/, `-${n}.png`);
+    }
+    names.set(name, element.key);
+    const folder = (this._screenshots.dir || SCREENSHOTS_FOLDER).replace(/[\\/]+$/, '');
+    return `${folder}/${name.replace(/\.png$/, '')}`;
   }
 
   /**
@@ -440,8 +573,9 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
 
   /**
    * Depth-first walk of every `<iframe>` reachable from `win`, pushing one
-   * entry per frame onto the flat `out` array (topFrame is not included --
-   * that's returned separately by analyze()). A cross-origin frame's
+   * entry per frame onto the flat `out` array: `{ win, framePath, result }`
+   * for a frame scanned, `{ failed }` for one that couldn't be (topFrame is
+   * not included -- that's returned separately by analyze()). A cross-origin frame's
    * `contentWindow.document` throws a real SecurityError (verified against a
    * real cross-origin page); caught here and
    * reported as `{ url, error }` using the iframe's own `src` attribute
@@ -456,7 +590,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * they name elements of the top document (and before 1.10.0 they were
    * silently ignored there, so the frame was scanned whole anyway).
    */
-  _collectFrames(win, engineOptions, runOnly, out) {
+  _collectFrames(win, engineOptions, runOnly, out, framePath) {
     const iframeEls = win.document.querySelectorAll('iframe');
     for (const el of iframeEls) {
       let childWin = null;
@@ -470,33 +604,37 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
 
       if (accessError) {
         out.push({
-          url: el.getAttribute('src') || null,
-          error: 'Cross-origin iframe: contentDocument is not accessible from Cypress spec code ' +
-            '(browser same-origin policy). ' + (accessError.message || String(accessError))
+          failed: {
+            url: el.getAttribute('src') || null,
+            error: 'Cross-origin iframe: contentDocument is not accessible from Cypress spec code ' +
+              '(browser same-origin policy). ' + (accessError.message || String(accessError))
+          }
         });
         continue;
       }
 
+      // The <iframe>s leading to this frame, for .screenshots() to place its
+      // elements on the app's page.
+      const childPath = framePath.concat({ frame: win, iframe: el });
       try {
         // pageUrl: null -- let surea11y self-detect each frame's own URL
         // via its own document.location.href fallback (see src/core.js),
-        // rather than this binding re-deriving it itself.
-        const frameResult = this._applyReportOnly(this._runInWindow(childWin, null, null, engineOptions, runOnly));
-        // childWin, not win/the top window -- see _logFindings()'s own
-        // comment on why $el must be scoped to the frame that was actually
-        // scanned.
-        this._logFindings(frameResult, childWin);
-        this._logScanGaps(frameResult);
-        out.push(frameResult);
+        // rather than this binding re-deriving it itself. reportOnly() and
+        // the Command Log entries come after, in _scan(), with childWin --
+        // see _logFindings()'s own comment on why $el must be scoped to the
+        // frame that was actually scanned.
+        out.push({ win: childWin, framePath: childPath, result: this._runInWindow(childWin, null, null, engineOptions, runOnly) });
       } catch (e) {
         out.push({
-          url: (childWin.location && childWin.location.href) || null,
-          error: (e && e.message) || String(e)
+          failed: {
+            url: (childWin.location && childWin.location.href) || null,
+            error: (e && e.message) || String(e)
+          }
         });
         continue;
       }
 
-      this._collectFrames(childWin, engineOptions, runOnly, out);
+      this._collectFrames(childWin, engineOptions, runOnly, out, childPath);
     }
   }
 

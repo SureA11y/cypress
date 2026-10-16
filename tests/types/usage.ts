@@ -78,8 +78,14 @@ new A11yCoreBuilder()
   .withTags(['wcag2a', 'wcag2aa'])
   .withPacks(['@acme/a11y-policy', './packs/house-rules.js'])
   .elementRef(true)
+  .screenshots({ dir: 'a11y-shots', outcomes: ['fail', 'cantTell'], padding: 8, highlight: true, max: 20 })
   .analyze()
   .then((r: A11yCoreResult | A11yCoreMultiFrameResult) => {
+    if (!('topFrame' in r)) {
+      const shot = r.checksResults[0].occurrences[0].screenshot;
+      if (shot && 'path' in shot) void `${shot.path} ${shot.box.width} ${shot.cropped ?? false}`;
+      else if (shot) void `${shot.skipped} ${shot.error ?? ''}`;
+    }
     if ('topFrame' in r) {
       formatFailures(r.topFrame);
       for (const frame of r.frames) if ('checksResults' in frame) getScanGaps(frame);

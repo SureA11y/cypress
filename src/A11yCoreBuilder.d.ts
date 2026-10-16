@@ -2,13 +2,14 @@
 
 import type * as Core from '@surea11y/core';
 import type { Outcome, Severity, Confidence } from '@surea11y/core';
-import type { ScanGap, ScanNote, OccurrenceLocation, ScanResultLike, WcagVersion, WcagLevel, WcagLevelInput, PlannedCheck, PlannedCriterion } from '@surea11y/binding-base';
+import type { ScanGap, ScanNote, OccurrenceLocation, ScanResultLike, WcagVersion, WcagLevel, WcagLevelInput, PlannedCheck, PlannedCriterion, ScreenshotBox, ScreenshotSkip } from '@surea11y/binding-base';
 
 // The result shapes are @surea11y/core's own types (shipped with core since
 // 1.9.0, and checked by core's tests against real scan results), so they
 // can't fall behind the engine the way a hand-written copy did. This file
 // only adds what this binding puts on top: the `element` on each
-// occurrence with .elementRef(true), and the `{ topFrame, frames }` shape
+// occurrence with .elementRef(true), its `screenshot` with .screenshots(),
+// and the `{ topFrame, frames }` shape
 // of a .frames(true) scan. The names exported here are kept from earlier
 // releases of this package; see surea11y's docs/OUTPUT_SCHEMA.md for what
 // each field means.
@@ -49,7 +50,36 @@ export interface Occurrence extends Core.Occurrence {
    * `cy.wrap(occurrence.element)` when you need one.
    */
   element?: Element | null;
+  /**
+   * Only present when `.screenshots()` was used and this occurrence's own
+   * outcome is one it pictures: the PNG Cypress saved, or why there is none.
+   * The occurrences about the same element share one object.
+   */
+  screenshot?: CypressScreenshot;
 }
+
+/** What `.screenshots()` asks for in Cypress: no buffer form, since a spec runs in the browser. */
+export interface CypressScreenshotOptions {
+  /** The folder under Cypress's screenshots folder; `surea11y` by default. */
+  dir?: string;
+  /** Which occurrences to picture, by their own outcome. Default `['fail']`. */
+  outcomes?: Outcome[];
+  /** CSS pixels of context around the element. Default 0. */
+  padding?: number;
+  /** Draw a box around the element, over the page. Default true. */
+  highlight?: boolean;
+  /** At most this many pictures per scan, frames included. Default 50. */
+  max?: number;
+}
+
+/**
+ * An occurrence's picture in Cypress: the file Cypress wrote (`path`, as
+ * cy.screenshot() reports it) and where the element shows in it (`box`, CSS
+ * pixels; the PNG has the device pixel ratio's more), or why there is none.
+ */
+export type CypressScreenshot =
+  | { path: string; box: ScreenshotBox; cropped?: true }
+  | { skipped: ScreenshotSkip; error?: string };
 
 export interface CheckResult extends Omit<Core.CheckResult, 'occurrences'> {
   occurrences: Occurrence[];
@@ -181,6 +211,14 @@ export class A11yCoreBuilder {
   frames(enabled?: boolean): this;
   /** Opt in to resolving each fail/cantTell occurrence's selector to a live DOM Element. */
   elementRef(enabled?: boolean): this;
+  /**
+   * Opt in to a picture of each element the scan flags, on its occurrences'
+   * `screenshot` field: a PNG cy.screenshot() saves under Cypress's
+   * screenshots folder, in `dir` or `surea11y/`. `false` turns them off.
+   * Throws a TypeError with code 'INVALID_ENGINE_OPTIONS' for an option it
+   * can't use.
+   */
+  screenshots(options?: CypressScreenshotOptions | boolean): this;
 
   /**
    * The rules this scan will run, worked out in Node by

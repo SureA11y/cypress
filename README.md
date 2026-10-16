@@ -116,7 +116,7 @@ Since `@surea11y/core` 1.10.0 the scan fails, instead of quietly running every r
 
 The scan runs in the application's own window, and Cypress fails the test with the engine's error object as thrown, `code` included, so `cy.on('fail', (err) => err.code)` can tell them apart.
 
-**Create one builder per scan.** `A11yCoreBuilder` is a mutable object with no reset between `.analyze()` calls — `include()`/`exclude()`/`withRules()`/`disableRules()`/`withTags()`/`disableTags()`/`options()`/`withCustomRules()`/`withPacks()` all push onto or merge into internal state that persists for the instance's lifetime. Calling one of them again before a second `.analyze()` call *accumulates* on top of the first scan's scope rather than replacing it (this is exactly what makes "call `.include()` several times for one scan," above, work — the same accumulation just also applies across separate scans if you reuse an instance). `.reportOnly()`/`.frames()`/`.elementRef()`/`.withWcag()`/`.withBestPractices()`/`.includeMode()`/`.wcagLevel()` are the exception: each call replaces the previous value instead of merging with it.
+**Create one builder per scan.** `A11yCoreBuilder` is a mutable object with no reset between `.analyze()` calls — `include()`/`exclude()`/`withRules()`/`disableRules()`/`withTags()`/`disableTags()`/`options()`/`withCustomRules()`/`withPacks()` all push onto or merge into internal state that persists for the instance's lifetime. Calling one of them again before a second `.analyze()` call *accumulates* on top of the first scan's scope rather than replacing it (this is exactly what makes "call `.include()` several times for one scan," above, work — the same accumulation just also applies across separate scans if you reuse an instance). `.reportOnly()`/`.frames()`/`.elementRef()`/`.screenshots()`/`.withWcag()`/`.withBestPractices()`/`.includeMode()`/`.wcagLevel()` are the exception: each call replaces the previous value instead of merging with it.
 
 ### Using it as an E2E accessibility gate
 
@@ -250,6 +250,46 @@ new A11yCoreBuilder().elementRef(true).analyze().then((results) => {
 ```
 
 Unlike driver-based bindings (which hand back a driver-native `ElementHandle`/`WebElement`), Cypress has no such object of its own — its idiom is wrapping a raw DOM element with `cy.wrap(el)` to get a chainable back. `.elementRef(true)` resolves each occurrence to the AUT's own live `Element` (`occurrence.element`, a plain DOM `Element`, not a Cypress chainable) by looking its `selector` up in the scanned document, through its `shadowHostSelectors` first when it is inside a shadow tree, and you `cy.wrap()` it yourself when you need one. Combines with `.frames(true)`: each frame's occurrences resolve against that frame's own document. Not every occurrence has one target element — a page-wide finding can carry `selector: ""`, in which case `occurrence.element` is `null`.
+
+### A picture of each failing element
+
+Opt in with `.screenshots()`, and each occurrence the scan flags gets a `screenshot` field. It holds a PNG of the element, with a box drawn around it, that `cy.screenshot()` saved under Cypress's screenshots folder, or the reason there is none:
+
+```js
+new A11yCoreBuilder()
+  .screenshots({ padding: 16 })
+  .analyze()
+  .then((results) => {
+    const [first] = results.checksResults.filter((r) => r.outcome === 'fail');
+    first.occurrences[0].screenshot;
+    // { path: '.../cypress/screenshots/a11y.cy.js/surea11y/element-3f9a1c07.png', box: { x: 16, y: 16, width: 120, height: 40 } }
+  });
+```
+
+| Option | Default | |
+|---|---|---|
+| `dir` | `surea11y` | The folder under Cypress's screenshots folder (`screenshotsFolder`, per spec) the pictures go in. |
+| `outcomes` | `['fail']` | Which occurrences to picture. For contrast, `['fail', 'cantTell']` shows the background the engine couldn't judge. |
+| `padding` | `0` | CSS pixels of context around the element. |
+| `highlight` | `true` | Draw a box around the element, over the page; the element itself is never restyled. |
+| `max` | `50` | At most this many pictures per scan, frames included. |
+
+- **One picture per element.** Several rules can flag the same element. It's pictured once, and each of their occurrences carries the same `screenshot`. A file is named after where the element is, as `element-<hash>.png`, and is overwritten on the next run, so it keeps its name. `formatFailures()` names it under each finding (`   screenshot: …/element-3f9a1c07.png`).
+- **`path` is the file Cypress wrote.** There is no `buffer`, as in the other bindings: a spec runs in the browser. Read a picture in Node through a `cy.task()` if you need its bytes.
+- **`box`** is where the element shows in the picture, in CSS pixels; the PNG is larger by the device pixel ratio. `cropped: true` says only part of it shows, as for an element taller than the viewport, which is pictured from its top-left corner.
+- **No picture, and why.** `{ skipped }` with:
+  - `'no-element'`: no selector, or nothing matches it any more;
+  - `'page-level'`: a finding about the whole page, on `<html>`, `<head>` or `<body>`;
+  - `'not-rendered'`: such as `display: none`;
+  - `'zero-size'`;
+  - `'off-screen'`: such as `left: -9999px`;
+  - `'max-reached'`;
+  - `'capture-failed'`, with the `error`: something on the page went wrong, such as an `<iframe>` that is gone.
+- **The page is put back.** Each element is scrolled into view for its picture. Afterwards every scroll position is restored and the box removed. Something drawn over the element, such as a sticky header, shows as it does on screen.
+- **Frames.** With `.frames(true)`, an element in a same-origin `<iframe>` is pictured on the page as it shows there. Cross-origin frames aren't scanned in Cypress (see [Scanning every frame](#scanning-every-frame-including-same-origin-iframes)).
+- **Off by default.** Pictures of real pages can hold personal data, and they end up as CI artifacts.
+
+Each picture is a `cy.screenshot({ capture: 'viewport', clip })` of the element's box, taken right after the scan, before `.reportOnly()` trims the result. `.screenshots()` combines with `.elementRef(true)`. Unlike the other bindings, a `cy.screenshot()` that fails fails the test, as any Cypress command does, and does so before the page is put back. Focus, hover, animations or content that loads late can still differ from what the scan saw. An option it can't use throws a `TypeError` with `code: 'INVALID_ENGINE_OPTIONS'` at the call, and so does `.analyze()` with `options({ output: { includeSelector: false } })`, since each element is found by its selector.
 
 ### Web components: the internals hook
 
@@ -437,7 +477,7 @@ The binding passes rule IDs, tags and options through to the engine, so these sh
 
 ## TypeScript
 
-`src/A11yCoreBuilder.d.ts` (re-exported from `src/index.d.ts`, wired up via `package.json`'s `types` field) ships types for the whole builder API, `formatFailures()`, `getScanGaps()` and `formatOccurrenceLocation()`. The result shapes (`A11yCoreResult`, `CheckResult`, `Occurrence`, `CompositeResult`, etc.) are built on the types `@surea11y/core` ships, which follow [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md), adding only `occurrence.element` (for `.elementRef(true)`) and the `.frames(true)` shapes. `EngineErrorCode`, `ScanGap`, `ScanNote` and the other names are exported too, and so are `withWcag()` and `wcagLevel()` (`WcagVersion`, `WcagLevelInput`), `plannedChecks()`/`plannedCriteria()` (chainables of `PlannedCheck[]` and `PlannedCriterion[]`), `getScanNotes()`, `installInternalsHook()`, and `withPacks()`, which takes module names; `@surea11y/cypress/plugin` has its own types. Code that handles every `ScanGap` kind it knows and treats the rest in an `else` branch needs a branch for `'pack-skipped'`, which carries `pack` rather than `selectors`. `tests/types.test.js` compiles a typical spec against them. `analyze()` is typed `Cypress.Chainable<A11yCoreResult | A11yCoreMultiFrameResult>` — narrow on `'topFrame' in results` (or cast, if you already know which mode you called) to get the specific shape back.
+`src/A11yCoreBuilder.d.ts` (re-exported from `src/index.d.ts`, wired up via `package.json`'s `types` field) ships types for the whole builder API, `formatFailures()`, `getScanGaps()` and `formatOccurrenceLocation()`. The result shapes (`A11yCoreResult`, `CheckResult`, `Occurrence`, `CompositeResult`, etc.) are built on the types `@surea11y/core` ships, which follow [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md), adding only `occurrence.element` (for `.elementRef(true)`), `occurrence.screenshot` (for `.screenshots()`, `CypressScreenshot`, with its options as `CypressScreenshotOptions`) and the `.frames(true)` shapes. `EngineErrorCode`, `ScanGap`, `ScanNote` and the other names are exported too, and so are `withWcag()` and `wcagLevel()` (`WcagVersion`, `WcagLevelInput`), `plannedChecks()`/`plannedCriteria()` (chainables of `PlannedCheck[]` and `PlannedCriterion[]`), `getScanNotes()`, `installInternalsHook()`, and `withPacks()`, which takes module names; `@surea11y/cypress/plugin` has its own types. Code that handles every `ScanGap` kind it knows and treats the rest in an `else` branch needs a branch for `'pack-skipped'`, which carries `pack` rather than `selectors`. `tests/types.test.js` compiles a typical spec against them. `analyze()` is typed `Cypress.Chainable<A11yCoreResult | A11yCoreMultiFrameResult>` — narrow on `'topFrame' in results` (or cast, if you already know which mode you called) to get the specific shape back.
 
 ## Relationship to the sibling bindings
 

@@ -7,17 +7,6 @@ const fs = require('fs');
 const { renderSarifReport } = require('@surea11y/core/sarif');
 const { decodePng } = require('@surea11y/binding-base/src/png.js');
 
-// For tests/en301549-pack.cy.js: core 1.12 and earlier have EN 301 549 built
-// in, with an @surea11y/core/en301549 entry point, and skip the pack.
-function coreHasEn301549() {
-  try {
-    require.resolve('@surea11y/core/en301549');
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 module.exports = defineConfig({
   e2e: {
     // No baseUrl: fixtures are plain local HTML files under cypress/fixtures,
@@ -61,8 +50,7 @@ module.exports = defineConfig({
           const png = decodePng(fs.readFileSync(path));
           const at = Math.floor(y) * png.stride + Math.floor(x) * png.bpp;
           return { width: png.width, height: png.height, colour: Array.from(png.rows.subarray(at, at + 3)) };
-        },
-        coreHasEn301549
+        }
       });
     }
   }

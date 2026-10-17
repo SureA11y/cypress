@@ -8,17 +8,13 @@ A Cypress binding for [`@surea11y/core`](https://github.com/SureA11y/core) — s
 npm install @surea11y/core @surea11y/cypress cypress
 ```
 
-`@surea11y/core` (1.12.0 or later, or 2.x) is a peer dependency, as Cypress is: the binding uses the core your project installs, so your project, the binding and any pack (`@surea11y/pack-en301549`, `@surea11y/pack-rgaa`, your own) share one copy. npm 7 and later install a missing peer for you, so `npm install @surea11y/cypress cypress` alone also works there; Yarn, pnpm with `auto-install-peers=false`, npm 6 and npm with `legacy-peer-deps` don't, so name core on the line, as above.
-
-One copy is what makes packs work. The scan the spec bundles from core runs in the app's window, the plugin builds the script that registers the packs there with core's `packScript()` in Node, and the scan, `packScript()` and the pack itself all need to come from one installation. With core as a regular dependency (up to 1.x of this binding), a project on core's next major got a second, nested core 1.x under the binding, and the binding ran that one: core 1.x has EN 301 549 built in, so it skipped `@surea11y/pack-en301549` and listed it in `results.skippedPacks`. It also means core's reporters (`@surea11y/core/sarif`, `/report`), its rule catalogue and baselines read results with the core that produced them, and a project that used `"overrides": { "@surea11y/core": "$@surea11y/core" }` to force one copy can drop it.
+`@surea11y/core` 1.12.0 or later, the engine, is a peer dependency, as Cypress is: install it with the binding, as above, so your project, the binding and any pack share one copy of core.
 
 `cypress` is a `peerDependencies` entry — consumers need their own Cypress install for the types/runtime to resolve, same as they already do to write any Cypress spec in the first place.
 
 ```bash
 npm test
 ```
-
-`tests/en301549-pack.cy.js` scans with `@surea11y/pack-en301549` against core's `en301549-pack` branch, which this repo's dev dependencies take from GitHub until core's next major is released; under a core with EN 301 549 built in, its specs are skipped.
 
 ## Usage
 
@@ -387,22 +383,17 @@ Invalid input (a missing/empty `id`, or a `runInPage`/`applicability` that's nei
 
 ### Checking against EN 301 549
 
-EN 301 549, the standard the European Accessibility Act refers to, restates WCAG's Level A and AA criteria in its chapter 9. Core's next major moves it out of core into a pack, [`@surea11y/pack-en301549`](https://github.com/SureA11y/pack-en301549), as RGAA is: install it beside core and the binding, register the plugin (see [Scanning with packs](#scanning-with-packs-standards-checklists-and-your-own-rules)), name the pack with `.withPacks()`, and choose its profile with `.options({ profile })`:
+EN 301 549, the standard the European Accessibility Act refers to, restates WCAG's Level A and AA criteria in its chapter 9. `.options({ profile })` runs the rules for its version, and each finding carries its EN 301 549 clause beside its WCAG criterion, in `meta.normativeMappings` (WCAG 1.1.1 is clause 9.1.1.1):
 
 ```js
 // EN 301 549 V4.1.1 (WCAG 2.2 A and AA); 'en301549-v3.2.1' for V3.2.1 (WCAG 2.1 A and AA)
 new A11yCoreBuilder()
-  .withPacks('@surea11y/pack-en301549')
   .options({ profile: 'en301549-v4.1.1' })
   .analyze()
   .then((results) => {
     results.engine.profile; // 'en301549-v4.1.1'
-    results.rulesResults.map((r) => r.ruleId); // ['en301549-V4.1.1-9.1.1.1', ...], one result per clause
-    getScanGaps(results); // [] -- a pack the page skipped would be a 'pack-skipped' gap
   });
 ```
-
-Under the profile, `rulesResults` holds one result per clause and nothing of WCAG; each finding carries its EN 301 549 clause beside its WCAG criterion in `meta.normativeMappings` (WCAG 1.1.1 is clause 9.1.1.1). To name the clauses on a WCAG scan without changing what runs, use `.withPacks('@surea11y/pack-en301549').options({ mappings: ['en301549'] })`. With core 1.12, which has EN 301 549 built in, leave the pack out: `.options({ profile: 'en301549-v4.1.1' })` alone selects it, and a scan given the pack skips it (`results.skippedPacks` says why).
 
 `.withWcag()`, `.withRules()` and `.withTags()` select rules instead of a profile, so leave them out when scanning with one. As with any target, a scan with no failures means no rule found a violation, not that the page conforms: most criteria need a person to check them. A profile name core doesn't know is not an error: the scan runs without it, core warns in the page's console, and `results.engine.profile` is left out.
 
@@ -448,7 +439,7 @@ The plugin loads a pack with Node's `require`, from the project root, and keeps 
 
 **Writing a pack.** A pack is an object made with `definePack` from `@surea11y/core/pack`. [`examples/acme-policy-pack.js`](./examples/acme-policy-pack.js) is a small one: a house rule, a checklist profile (WCAG 2.2 A and AA, `region`, and the house rule) and two checklist items. `npm run example:pack` scans a page with it, naming it by its path (`'./examples/acme-policy-pack.js'`), and [`examples/e2e-test-example.cy.js`](./examples/e2e-test-example.cy.js) uses it as a test gate. For a pack of your own, `npx surea11y-pack new <folder>` (from `@surea11y/core`) writes a package that works as generated, with its tests, docs and lint; core's [`PACKS.md`](https://github.com/SureA11y/core/blob/main/docs/PACKS.md) is the guide.
 
-**When a pack doesn't run.** The plugin builds the page's script with the `@surea11y/core` this binding loads, and checks each pack as it does: for a pack that core can't run, such as one whose `core` range leaves out the installed core, or whose profile names a rule that doesn't exist, the test fails before scanning, with core's message naming the pack. A pack the page then doesn't run (one named with a raw `.options({ packs })` and never registered, or a page running another core version, when two copies of core are installed) is listed in `results.skippedPacks` with the reason. `getScanGaps()` reports that as `'pack-skipped'`, and the Command Log shows a `surea11y scan gap` entry, so a test gate that asserts on `getScanGaps(results)` fails rather than passing with the pack's checks never run. Core is a peer of the binding and of every pack, so installing the pack beside the binding gives both one core; `npm ls @surea11y/core` should list a single version.
+**When a pack doesn't run.** The plugin builds the page's script with the `@surea11y/core` this binding loads, and checks each pack as it does: for a pack that core can't run, such as one whose `core` range leaves out the installed core, or whose profile names a rule that doesn't exist, the test fails before scanning, with core's message naming the pack. A pack the page then doesn't run (one named with a raw `.options({ packs })` and never registered, or a page running another core version, when two copies of core are installed) is listed in `results.skippedPacks` with the reason. `getScanGaps()` reports that as `'pack-skipped'`, and the Command Log shows a `surea11y scan gap` entry, so a test gate that asserts on `getScanGaps(results)` fails rather than passing with the pack's checks never run. Install the pack beside the binding, so npm resolves one core for both.
 
 ### Element addressing beyond a CSS selector
 

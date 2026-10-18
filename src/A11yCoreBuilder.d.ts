@@ -178,6 +178,13 @@ export class A11yCoreBuilder {
   /** Also run the best-practice rules, those that name no WCAG criterion. */
   withBestPractices(enabled?: boolean): this;
   /**
+   * Fetch, in the page, the style sheets it can't read (another origin's)
+   * that their server shares (CORS), and give core their text, so checks
+   * that read the CSS can check them. On by default; needs @surea11y/core
+   * 1.14.0 or later.
+   */
+  fetchStyleSheets(enabled?: boolean): this;
+  /**
    * How withRules() and withTags() combine when both are given: 'and' (the
    * default) runs the rules matching both, 'or' those matching either. A
    * later call replaces the mode.

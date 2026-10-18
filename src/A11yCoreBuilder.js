@@ -1,6 +1,6 @@
 'use strict';
 
-const { runa11yCoreInPage, internalsHookScript } = require('@surea11y/core');
+const { runa11yCoreInPage, internalsHookScript, preloadStyleSheets } = require('@surea11y/core');
 // The tasks @surea11y/cypress/plugin (src/plugin.js) registers: one prepares
 // packs in Node, one lists what a scan will check. Named here, not imported:
 // this file runs in the browser.
@@ -320,6 +320,40 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
     // and the <iframe>s leading to it, so .screenshots() can picture its
     // elements through Cypress's own commands before reportOnly() trims the
     // results; without it, the results are finished at once.
+    // The style sheets the page can't read, fetched in the page where their
+    // server shares them, before the scan (core 1.14.0's preloadStyleSheets).
+    return cy
+      .window({ log: false })
+      .then({ timeout: 10000 }, (win) => this._preloadStyleSheets(win))
+      .then((sheets) => {
+        if (sheets && sheets.length) {
+          const given = Array.isArray(engineOptions.styleSheetTexts) ? engineOptions.styleSheetTexts : [];
+          engineOptions.styleSheetTexts = given.concat(sheets.filter((s) => !given.some((g) => g && g.href === s.href)));
+        }
+        return this._scanWindow(contextSelector, engineOptions, runOnly);
+      });
+  }
+
+  /**
+   * The text of the style sheets `win` can't read (another origin's) that
+   * their server shares (CORS), fetched in the page's own realm with core's
+   * preloadStyleSheets(), as axe does: a Cypress spec runs in the browser, so
+   * a sheet whose server doesn't share it stays unread. [] with
+   * fetchStyleSheets(false), or a core before 1.14.0.
+   */
+  _preloadStyleSheets(win) {
+    if (!this._fetchStyleSheets || typeof preloadStyleSheets !== 'function') return [];
+    return new Cypress.Promise((resolve) => {
+      try {
+        const inPage = win.eval('(' + preloadStyleSheets.toString() + ')');
+        Promise.resolve(inPage({ timeoutMs: 5000 })).then(resolve, () => resolve([]));
+      } catch {
+        resolve([]);
+      }
+    });
+  }
+
+  _scanWindow(contextSelector, engineOptions, runOnly) {
     return cy.window().then((win) => {
       const scans = [{ win, framePath: [], result: this._runInWindow(win, this._url, contextSelector, engineOptions, runOnly) }];
       if (this._scanFrames) this._collectFrames(win, engineOptions, runOnly, scans, []);

@@ -432,6 +432,28 @@ new A11yCoreBuilder().analyze().then((results) => {
 
 `remote:debugger:protocol` is only there in Chromium-family browsers, so not in Firefox. The contrast rules still measure the page's own colors under forced colors, since WCAG judges contrast in those, so results match a scan with forced colors off; a contrast finding the engine couldn't measure that way carries `details.forcedColors: true`. When forced colors were active, `formatFailures()` adds a line saying so, since it's easy to miss on a CI agent with high contrast turned on.
 
+### Dark mode and phone width: scans under conditions
+
+A page can fail differently in dark mode or at phone width: text that reads well on white fails contrast on a dark background, and a target big enough at 1280 pixels shrinks at 320. `.conditions()` scans the page as it is, then under each condition, and yields one result:
+
+```js
+new A11yCoreBuilder()
+  .conditions([{ colorScheme: 'dark' }, { width: 320 }, { colorScheme: 'dark', width: 320 }])
+  .analyze()
+  .then((results) => {
+    expect(getGatingFailures(results), formatFailures(results)).to.deep.equal([]);
+  });
+```
+
+A condition sets a color scheme (`'light'` or `'dark'`), a viewport width in CSS pixels, or both. A width goes through `cy.viewport()`, keeping the height. A color scheme goes through the DevTools protocol (`Emulation.setEmulatedMedia`), so it needs a Chromium-family browser (Chrome, Edge, Electron); in Firefox or WebKit, `.analyze()` throws before any scan. The viewport and color scheme are put back after the last scan, and the scheme also when the test fails partway (Cypress resets the viewport between tests itself).
+
+- A rule's outcome is its worst across the scans, so a contrast failure only in dark mode fails the rule.
+- An occurrence is listed once per element, rule and reason code, with the `conditions` it appeared under (`['default', 'dark']`); `formatFailures()` prints them as `seen in: default, dark`.
+- `results.conditionRuns` lists each scan's condition and `engine.environment`.
+- The Command Log entries and `.reportOnly()` apply to the merged result.
+
+Each condition is a full scan, so three conditions take about four times as long as one scan. `.frames(true)` can't be combined with `.conditions()` yet. A picture taken with `.screenshots()` under a condition has the condition in its file name.
+
 ### Registering a custom rule at runtime
 
 ```js

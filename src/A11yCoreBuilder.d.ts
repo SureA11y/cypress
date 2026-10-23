@@ -137,6 +137,9 @@ export class A11yCoreBuilder {
   /** The same as the exported installInternalsHook(). */
   static installInternalsHook(win?: Window): void;
 
+  /** The same as the exported installListenerHook(). */
+  static installListenerHook(win?: Window): void;
+
   /**
    * Scope the scan to one region. Call multiple times for a multi-region
    * union. A selector that matches no element scans nothing (the result's
@@ -285,9 +288,11 @@ export function formatOccurrenceLocation(occurrence: OccurrenceLocation | null |
 
 /**
  * How one scan result's page was scanned, which a gap doesn't cover:
- * `forced-colors` when it was shown in forced colors, and `internals-hook`
+ * `forced-colors` when it was shown in forced colors, `internals-hook`
  * when the scan asked about web components it could have read with the
- * internals hook.
+ * internals hook, and `listener-hook` when it asked about click or pointer
+ * handlers whose keyboard equivalent the listener hook would have let it
+ * see.
  */
 export function getScanNotes(result: A11yCoreResult | ScanResultLike): ScanNote[];
 
@@ -299,3 +304,12 @@ export function getScanNotes(result: A11yCoreResult | ScanResultLike): ScanNote[
  * `cy.visit(url, { onBeforeLoad: installInternalsHook })`.
  */
 export function installInternalsHook(win?: Window): void;
+
+/**
+ * Installs @surea11y/core's opt-in listener hook (core 1.14.0 and later), so
+ * the keyboard rules see the listeners the app adds from script. Called as
+ * installInternalsHook() is: with no argument, in the support file, for
+ * every visit from then on; with a window, for
+ * `cy.visit(url, { onBeforeLoad: installListenerHook })`.
+ */
+export function installListenerHook(win?: Window): void;

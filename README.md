@@ -137,7 +137,7 @@ it('has no accessibility violations', () => {
 
 `getScanGaps(result)` lists what one scan result says it left out, which its `checksResults` alone would pass over as clean: `{ kind: 'context-not-found' }` when the `.include()` scope matched no element, `'context-partly-not-found'` when some of several did not, one `'custom-rule-skipped'` (with `rule: { id, reason }`) per custom rule the engine did not run (a custom rule you excluded yourself with `.disableRules()` is listed in `skippedCustomRules` with `excluded: true`, and isn't a gap), and one `'pack-skipped'` (with `pack: { name, reason }`, from `results.skippedPacks`) per pack the page did not run (see [Scanning with packs](#scanning-with-packs-standards-checklists-and-your-own-rules)). Each has a `message`. For a `.frames(true)` scan, call it on `topFrame` and on each scanned frame.
 
-`getScanNotes(result)` says how the page was scanned, which a gap doesn't cover, and nothing was left out: `'forced-colors'` when the page was shown in [forced colors](#forced-colors), and `'internals-hook'` when the scan asked about web components it could have read with the [internals hook](#web-components-the-internals-hook).
+`getScanNotes(result)` says how the page was scanned, which a gap doesn't cover, and nothing was left out: `'forced-colors'` when the page was shown in [forced colors](#forced-colors), `'internals-hook'` when the scan asked about web components it could have read with the [internals hook](#web-components-the-internals-hook), and `'listener-hook'` when it asked about handlers whose keyboard equivalent the [listener hook](#listeners-added-from-script-the-listener-hook) would have let it see.
 
 ### Readable console/CI output on failure
 
@@ -333,6 +333,45 @@ With it, the checkbox above passes, an unnamed component that attaches internals
 - **For test and audit runs.** The hook wraps `HTMLElement.prototype.attachInternals` (components get the same internals back), adds a stack frame to errors thrown through it, and keeps its record under a global symbol, where any script on the page can read every component's internals. That's why it's opt-in.
 - **Without it**, the Command Log shows a `surea11y scan note` when the scan asked about such components, and `getScanNotes()` gives that note as `kind: 'internals-hook'`.
 
+### Listeners added from script: the listener hook
+
+The keyboard rules read inline handlers (`onclick="…"`) from the markup. Most apps add theirs from script, which no page script can list afterwards:
+
+```js
+document.querySelector('#save').addEventListener('click', save); // on a <div role="button" tabindex="0">
+```
+
+The browser fires `click` from Enter and Space only on native controls, so this button does nothing from the keyboard. By default the scan can't see the listener, so it doesn't report the element.
+
+`installListenerHook()` (`@surea11y/core` 1.14.0 and later) installs core's opt-in hook, which records the click, key, focus and mouse listeners the app adds with `addEventListener` or an `onclick`-style property. It's called as `installInternalsHook()` is, once in your support file for every visit, or as `onBeforeLoad` for one; the two can be installed together:
+
+```js
+// cypress/support/e2e.js
+import { installInternalsHook, installListenerHook } from '@surea11y/cypress';
+
+installInternalsHook();
+installListenerHook();
+```
+
+```js
+cy.visit('/settings', { onBeforeLoad: installListenerHook });
+new A11yCoreBuilder().analyze().then((results) => {
+  expect(results.engine.environment.listenerHook).to.equal('early'); // the hook ran before the app's scripts
+});
+```
+
+With it:
+
+- **The button above fails** `click-handler-keyboard-operable` (`CLICK_HANDLER_NO_KEY_LISTENER`): it's a focusable control with no key listener on it, inside it, above it, on the document or on the window. Once it listens for `keydown`, it passes.
+- **A key listener only above the element** (on an ancestor, the document or the window) is asked about: it may handle this element's keys, or only others'.
+- **A click listener on a container**, as a framework that delegates events from its root adds, makes no element inside it a candidate, so delegated handlers never fail.
+- **Pointer listeners** added from script are asked about by `mouse-only-event-handlers`, unless the element also has a keyboard equivalent.
+
+`A11yCoreBuilder.installListenerHook()` is the same function. The internals hook's limits apply: it needs Cypress's default Content Security Policy stripping, and frames inside the app don't get it.
+
+- **For test and audit runs.** The hook wraps `addEventListener`, `removeEventListener` and the `on…` property setters (listeners themselves aren't wrapped, and run as before), and keeps its record under a global symbol. That's why it's opt-in.
+- **Without it**, the Command Log shows a `surea11y scan note` when the scan asked about an inline click or pointer handler whose keyboard equivalent may have been added from script, and `getScanNotes()` gives that note as `kind: 'listener-hook'`.
+
 ### Forced colors
 
 A page shown in forced colors (Windows high contrast) draws in the user's colors, not its own. `results.engine.environment.forcedColors` says which it was: `'active'` or `'none'`. To check a page under forced colors on purpose, emulate it through the DevTools protocol before visiting, in Chrome, Edge or Electron:
@@ -469,6 +508,8 @@ An occurrence inside a shadow tree also carries `shadowHostSelectors`: the selec
 
 With `@surea11y/core` 1.14.0, what a scan through this binding shows differently (core's [`CHANGELOG.md`](https://github.com/SureA11y/core/blob/main/CHANGELOG.md) has the full list):
 
+- **Listeners added from script.** With [`installListenerHook()`](#listeners-added-from-script-the-listener-hook), `click-handler-keyboard-operable` judges a click listener added with `addEventListener` as an inline `onclick`, and fails a focusable control that no key listener can reach (`CLICK_HANDLER_NO_KEY_LISTENER`); `mouse-only-event-handlers` asks about pointer listeners added from script. Both rules' messages now say "click handler" rather than "onclick handler".
+- **Roles that depend on context.** `aria-allowed-attr` no longer fails `aria-expanded` on a text input whose `list` names a `<datalist>` (a combobox), and now judges `<td>`: `cell` in a table, `gridcell` in a grid. `label-in-name` checks a `<td>` in a grid. `heading-order` and `page-has-heading-one` count a heading marked `role="none"` that can take focus or has a global ARIA attribute, as browsers do.
 - **Style sheets from another origin are checked.** `analyze()` fetches, in the page, the style sheets it can't read whose server shares them, and core checks them, so `css-orientation-lock` finds a lock in a CDN's CSS instead of asking (`.fetchStyleSheets(false)` turns it off). [More](#style-sheets-from-another-origin).
 - **Criteria are `notApplicable` only where the rules see every case.** A WCAG rollup whose rules all found nothing is now `cantTell` (`reasonCode` `composite.rollup.cantTell.partialCoverage`), except for 1.3.5, 2.4.3, 2.4.4, 2.4.7, 2.4.9, 2.5.3, 2.5.8, 3.3.2 and 4.1.1, whose rules find every link, field, focusable element, target or id. A gate that asserted a criterion `notApplicable` now sees `cantTell`.
 - **New checks.** `click-handler-keyboard-operable` (2.1.1, 2.1.3) fails an inline `onclick` on an element the keyboard can't reach, and asks about one that has no key handler. `moving-content-pausable` (2.2.2) asks about content that moves by itself for more than five seconds.
@@ -504,7 +545,7 @@ The binding passes rule IDs, tags and options through to the engine, so these sh
 
 ## TypeScript
 
-`src/A11yCoreBuilder.d.ts` (re-exported from `src/index.d.ts`, wired up via `package.json`'s `types` field) ships types for the whole builder API, `formatFailures()`, `getScanGaps()` and `formatOccurrenceLocation()`. The result shapes (`A11yCoreResult`, `CheckResult`, `Occurrence`, `CompositeResult`, etc.) are built on the types `@surea11y/core` ships, which follow [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md), adding only `occurrence.element` (for `.elementRef(true)`), `occurrence.screenshot` (for `.screenshots()`, `CypressScreenshot`, with its options as `CypressScreenshotOptions`) and the `.frames(true)` shapes. `EngineErrorCode`, `ScanGap`, `ScanNote` and the other names are exported too, and so are `withWcag()` and `wcagLevel()` (`WcagVersion`, `WcagLevelInput`), `plannedChecks()`/`plannedCriteria()` (chainables of `PlannedCheck[]` and `PlannedCriterion[]`), `getScanNotes()`, `installInternalsHook()`, and `withPacks()`, which takes module names; `@surea11y/cypress/plugin` has its own types. Code that handles every `ScanGap` kind it knows and treats the rest in an `else` branch needs a branch for `'pack-skipped'`, which carries `pack` rather than `selectors`. `tests/types.test.js` compiles a typical spec against them. `analyze()` is typed `Cypress.Chainable<A11yCoreResult | A11yCoreMultiFrameResult>` — narrow on `'topFrame' in results` (or cast, if you already know which mode you called) to get the specific shape back.
+`src/A11yCoreBuilder.d.ts` (re-exported from `src/index.d.ts`, wired up via `package.json`'s `types` field) ships types for the whole builder API, `formatFailures()`, `getScanGaps()` and `formatOccurrenceLocation()`. The result shapes (`A11yCoreResult`, `CheckResult`, `Occurrence`, `CompositeResult`, etc.) are built on the types `@surea11y/core` ships, which follow [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md), adding only `occurrence.element` (for `.elementRef(true)`), `occurrence.screenshot` (for `.screenshots()`, `CypressScreenshot`, with its options as `CypressScreenshotOptions`) and the `.frames(true)` shapes. `EngineErrorCode`, `ScanGap`, `ScanNote` and the other names are exported too, and so are `withWcag()` and `wcagLevel()` (`WcagVersion`, `WcagLevelInput`), `plannedChecks()`/`plannedCriteria()` (chainables of `PlannedCheck[]` and `PlannedCriterion[]`), `getScanNotes()`, `installInternalsHook()`, `installListenerHook()`, and `withPacks()`, which takes module names; `@surea11y/cypress/plugin` has its own types. Code that handles every `ScanGap` kind it knows and treats the rest in an `else` branch needs a branch for `'pack-skipped'`, which carries `pack` rather than `selectors`. `tests/types.test.js` compiles a typical spec against them. `analyze()` is typed `Cypress.Chainable<A11yCoreResult | A11yCoreMultiFrameResult>` — narrow on `'topFrame' in results` (or cast, if you already know which mode you called) to get the specific shape back.
 
 ## Relationship to the sibling bindings
 

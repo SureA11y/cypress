@@ -1,6 +1,6 @@
 'use strict';
 
-const { A11yCoreBuilder, formatFailures, getScanGaps, installInternalsHook } = require('../src/index.js');
+const { A11yCoreBuilder, formatFailures, getScanGaps, installInternalsHook, installListenerHook } = require('../src/index.js');
 
 // Shared across the customRules tests below -- reported outcome depends on
 // whether ctx.document has a .my-widget element. Unlike every sibling
@@ -942,5 +942,63 @@ describe('@surea11y/core 1.12', () => {
     builder.plannedChecks().then((checks) => {
       expect(checks.map((c) => c.ruleId).sort()).to.deep.equal(['img-alt-present', 'my-org-custom-rule']);
     });
+  });
+});
+
+// The listener hook needs @surea11y/core 1.14.0, and its note
+// @surea11y/binding-base 1.6.0; these tests are skipped with older ones.
+const HAS_LISTENER_HOOK = typeof require('@surea11y/core').listenerHookScript === 'function';
+const HAS_LISTENER_NOTE = require('@surea11y/binding-base').getScanNotes({
+  checksResults: [{ outcome: 'cantTell', occurrences: [{ selector: 'div', data: { details: { reasonCode: 'CLICK_HANDLER_NO_KEY_HANDLER' } } }] }]
+}).some((n) => n.kind === 'listener-hook');
+
+describe('@surea11y/core 1.14: the listener hook', () => {
+  const FIXTURE = 'cypress/fixtures/listener-button.html';
+  const finding = (result) => {
+    const check = result.checksResults.find((r) => r.ruleId === 'click-handler-keyboard-operable');
+    return check ? [check.outcome, check.occurrences.map((o) => o.data.details.reasonCode)] : undefined;
+  };
+
+  (HAS_LISTENER_NOTE && HAS_LISTENER_HOOK ? it : it.skip)('without it, a click listener added from script is not seen, and the Command Log says how to see them', () => {
+    cy.spy(Cypress, 'log').log(false).as('log');
+    cy.visit(FIXTURE);
+    new A11yCoreBuilder().include('#scripted').withRules('click-handler-keyboard-operable').analyze().then((results) => {
+      expect(results.engine.environment.listenerHook).to.equal(undefined);
+      expect(finding(results)[0]).to.equal('notApplicable');
+    });
+    new A11yCoreBuilder().include('#inline').withRules('click-handler-keyboard-operable').analyze();
+    cy.get('@log').should((log) => {
+      const notes = log.getCalls().filter((c) => c.args[0] && c.args[0].name === 'surea11y scan note');
+      expect(notes).to.have.length(1);
+      expect(notes[0].args[0].message).to.match(/1 element was asked about because the scan could not see .*installListenerHook\(\)/);
+    });
+  });
+
+  (HAS_LISTENER_HOOK ? it : it.skip)('installListenerHook as onBeforeLoad sees them: the button with no key listener fails, the one with its own passes', () => {
+    cy.visit(FIXTURE, {
+      onBeforeLoad(win) {
+        installListenerHook(win);
+        installInternalsHook(win);
+      }
+    });
+    new A11yCoreBuilder().include('#scripted').withRules('click-handler-keyboard-operable').analyze().then((results) => {
+      expect(results.engine.environment.listenerHook).to.equal('early');
+      expect(results.engine.environment.internalsHook).to.equal('early');
+      expect(finding(results)).to.deep.equal(['fail', ['CLICK_HANDLER_NO_KEY_LISTENER']]);
+    });
+    new A11yCoreBuilder().include('#keyed').withRules('click-handler-keyboard-operable').analyze().then((results) => {
+      expect(finding(results)).to.deep.equal(['pass', []]);
+    });
+  });
+
+  it('installListenerHook() throws a TypeError for anything but a window', () => {
+    for (const bad of [null, {}, 'window']) {
+      // Checked by name: Chai's TypeError is another window's.
+      let thrown;
+      try { installListenerHook(bad); } catch (e) { thrown = e; }
+      expect(thrown && thrown.name).to.equal('TypeError');
+      expect(thrown.message).to.match(/^installListenerHook\(\): expected the app's window/);
+    }
+    expect(A11yCoreBuilder.installListenerHook).to.be.a('function');
   });
 });

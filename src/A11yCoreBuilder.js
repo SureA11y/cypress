@@ -1,6 +1,13 @@
 'use strict';
 
-const { runa11yCoreInPage, internalsHookScript, preloadStyleSheets } = require('@surea11y/core');
+const {
+  runa11yCoreInPage,
+  internalsHookScript,
+  listenerHookScript,
+  liveRegionHookScript,
+  getAnnouncements: readAnnouncements,
+  preloadStyleSheets
+} = require('@surea11y/core');
 // The tasks @surea11y/cypress/plugin (src/plugin.js) registers: one prepares
 // packs in Node, one lists what a scan will check. Named here, not imported:
 // this file runs in the browser.
@@ -16,7 +23,9 @@ const {
   screenshotFrameKey,
   screenshotToken,
   prepareElementScreenshot,
-  releaseElementScreenshot
+  releaseElementScreenshot,
+  conditionLabel,
+  mergeConditionResults
 } = require('@surea11y/binding-base');
 
 // Where .screenshots() pictures go without `dir`, under Cypress's own
@@ -29,8 +38,6 @@ const SCREENSHOTS_FOLDER = 'surea11y';
 function evaluateInFrame(win, fn, args) {
   return win.eval('(' + fn.toString() + ')')(...args);
 }
-
-let hookRegistered = false;
 
 /**
  * Installs @surea11y/core's opt-in internals hook, so a scan can read the
@@ -49,19 +56,87 @@ let hookRegistered = false;
  * @param {Window} [win]
  */
 function installInternalsHook(win) {
+  installBeforeLoad('installInternalsHook', win, () => internalsHookScript());
+}
+
+/**
+ * Installs @surea11y/core's opt-in listener hook (core 1.14.0 and later), so
+ * the keyboard rules see the click, key, focus and mouse listeners the app
+ * adds from script (addEventListener, or an onclick-style property), not
+ * only inline handler attributes. Called as installInternalsHook() is: with
+ * no argument, in the support file, for every visit from then on; or with a
+ * window, `cy.visit(url, { onBeforeLoad: installListenerHook })`. The two
+ * can be installed together.
+ * @param {Window} [win]
+ */
+function installListenerHook(win) {
+  installBeforeLoad('installListenerHook', win, () => {
+    if (typeof listenerHookScript !== 'function') {
+      throw new TypeError('installListenerHook() needs @surea11y/core 1.14.0 or later, which has listenerHookScript().');
+    }
+    return listenerHookScript();
+  });
+}
+
+/**
+ * Installs @surea11y/core's opt-in live-region hook (core 1.14.0 and later),
+ * which records what the app's live regions are given from the load event
+ * on: live-region-announcements then asks about a region added with its
+ * text already in it, or shown and filled at once, and getAnnouncements()
+ * reads what the app made available to announce. Called as
+ * installInternalsHook() is: with no argument, in the support file, for
+ * every visit from then on; or with a window,
+ * `cy.visit(url, { onBeforeLoad: installLiveRegionHook })`.
+ * @param {Window} [win]
+ */
+function installLiveRegionHook(win) {
+  installBeforeLoad('installLiveRegionHook', win, () => {
+    if (typeof liveRegionHookScript !== 'function') {
+      throw new TypeError('installLiveRegionHook() needs @surea11y/core 1.14.0 or later, which has liveRegionHookScript().');
+    }
+    return liveRegionHookScript();
+  });
+}
+
+/**
+ * Yields what the app's live regions were given while shown and reachable by
+ * assistive technology, as the live-region hook recorded it:
+ * [{ text, politeness, time }] in the order the app did it, or null when the
+ * app's window has no hook. What the app made available to announce, not
+ * what a screen reader said. A Cypress chainable, like analyze().
+ */
+function getAnnouncements() {
+  if (typeof readAnnouncements !== 'function') {
+    throw new TypeError('getAnnouncements() needs @surea11y/core 1.14.0 or later, which has getAnnouncements().');
+  }
+  return cy.window({ log: false }).then((win) => {
+    const list = readAnnouncements(win);
+    return list ? list.map((a) => ({ text: a.text, politeness: a.politeness, time: a.time })) : null;
+  });
+}
+
+// The window:before:load handlers registered so far, one per hook.
+const registeredHooks = new Set();
+
+// Runs `getSource()`'s script with the app window's eval: in `win`, for one
+// visit, or, with no window, in every app window from now on, before the
+// app's scripts. `name` names the function in errors, and registers each
+// hook once.
+function installBeforeLoad(name, win, getSource) {
   if (win !== undefined) {
     if (!win || typeof win.eval !== 'function') {
-      throw new TypeError('installInternalsHook(): expected the app\'s window (as onBeforeLoad gives it), or no argument to install it on every visit.');
+      throw new TypeError(`${name}(): expected the app's window (as onBeforeLoad gives it), or no argument to install it on every visit.`);
     }
-    win.eval(internalsHookScript());
+    win.eval(getSource());
     return;
   }
   if (typeof Cypress === 'undefined' || typeof Cypress.on !== 'function') {
-    throw new Error('installInternalsHook(): call it from a Cypress support file or spec.');
+    throw new Error(`${name}(): call it from a Cypress support file or spec.`);
   }
-  if (hookRegistered) return;
-  hookRegistered = true;
-  Cypress.on('window:before:load', (appWindow) => appWindow.eval(internalsHookScript()));
+  if (registeredHooks.has(name)) return;
+  const source = getSource();
+  registeredHooks.add(name);
+  Cypress.on('window:before:load', (appWindow) => appWindow.eval(source));
 }
 
 /**
@@ -198,6 +273,21 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
     return installInternalsHook(win);
   }
 
+  /** The same as the exported installListenerHook(), as every binding's builder has it. */
+  static installListenerHook(win) {
+    return installListenerHook(win);
+  }
+
+  /** The same as the exported installLiveRegionHook(), as every binding's builder has it. */
+  static installLiveRegionHook(win) {
+    return installLiveRegionHook(win);
+  }
+
+  /** The same as the exported getAnnouncements(), as every binding's builder has it. */
+  static getAnnouncements() {
+    return getAnnouncements();
+  }
+
   /**
    * @param {{ url?: string }} [opts] `url` overrides the URL surea11y
    *   reports for the *top* frame's result (`result.url`) -- rarely needed;
@@ -233,6 +323,10 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * @returns {Cypress.Chainable<object>} see surea11y's docs/OUTPUT_SCHEMA.md
    */
   analyze() {
+    // .conditions() (binding-base 1.6.0) and .frames(true) can't be combined
+    // yet; refused before any command.
+    if (this._conditions) this._assertConditionsAlone();
+    const scan = () => (this._conditions ? this._scanUnderConditionsCy() : this._scan());
     // withPacks() names modules; the plugin (src/plugin.js) prepares them in
     // Node and returns the script that registers them, before the scan.
     if (this._packSpecs && this._packSpecs.length) {
@@ -240,10 +334,96 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         .task(TASK, { packs: this._packSpecs }, { log: false })
         .then((prepared) => {
           this._preparedPacks = prepared;
-          return this._scan();
+          return scan();
         });
     }
-    return this._scan();
+    return scan();
+  }
+
+  /**
+   * .conditions() in Cypress: the page as it is, then under each condition,
+   * each scan a chain of Cypress commands, merged into one result
+   * (binding-base's mergeConditionResults()). A width goes through
+   * cy.viewport(), the height kept; a color scheme through the DevTools
+   * protocol (Cypress.automation('remote:debugger:protocol') with
+   * Emulation.setEmulatedMedia), so only in a Chromium-family browser:
+   * elsewhere it is refused before any scan. Each condition sets both, from
+   * the page as it was. At the end the viewport goes back, and the page is
+   * left dark if it was dark before; if the test fails on the way, the
+   * scheme is put back too (Cypress resets the viewport itself between
+   * tests). reportOnly() and the log entries apply to the merged result.
+   * @returns {Cypress.Chainable<object>}
+   */
+  _scanUnderConditionsCy() {
+    const conditions = this._conditions;
+    if (!Cypress.isBrowser({ family: 'chromium' }) && conditions.some((c) => c.colorScheme)) {
+      throw new Error(
+        'A11yCoreBuilder.conditions(): a colorScheme needs a Chromium-family browser (Chrome, Edge, Electron), ' +
+        'whose DevTools protocol can emulate it; this run is in ' + Cypress.browser.name + '.'
+      );
+    }
+    const emulate = (value) =>
+      Cypress.automation('remote:debugger:protocol', {
+        command: 'Emulation.setEmulatedMedia',
+        params: { features: [{ name: 'prefers-color-scheme', value }] }
+      });
+    const runs = [];
+    let saved = null;
+    // The scheme a condition without one goes back to.
+    let baseScheme = '';
+    let schemeSet = false;
+    const scheme = (value) => {
+      schemeSet = value !== baseScheme;
+      return cy.wrap(emulate(value), { log: false });
+    };
+    cy.on('fail', (error) => {
+      this._conditionScan = false;
+      this._screenshotCondition = null;
+      if (schemeSet) emulate(baseScheme).catch(() => {});
+      throw error;
+    });
+
+    this._conditionScan = true;
+    let chain = cy
+      .window({ log: false })
+      .then((win) => {
+        saved = { width: win.innerWidth, height: win.innerHeight };
+        baseScheme = win.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : '';
+      })
+      .then(() => this._scan())
+      .then((result) => {
+        runs.push({ condition: 'default', result });
+      });
+    for (const condition of conditions) {
+      const label = conditionLabel(condition);
+      chain = chain
+        .then(() => {
+          this._screenshotCondition = label;
+          cy.viewport(condition.width || saved.width, saved.height, { log: false });
+          if (condition.colorScheme) return scheme(condition.colorScheme);
+          if (schemeSet) return scheme(baseScheme);
+          return null;
+        })
+        .then(() => this._scan())
+        .then((result) => {
+          runs.push({ condition: label, result });
+        });
+    }
+    return chain
+      .then(() => {
+        this._screenshotCondition = null;
+        this._conditionScan = false;
+        cy.viewport(saved.width, saved.height, { log: false });
+        if (schemeSet) return scheme(baseScheme);
+        return null;
+      })
+      .then(() => cy.window({ log: false }))
+      .then((win) => {
+        const result = this._applyReportOnly(mergeConditionResults(runs));
+        this._logFindings(result, win);
+        this._logScanGaps(result);
+        return result;
+      });
   }
 
   /**
@@ -361,6 +541,8 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
       const finish = () => {
         const results = scans.map((scan) => {
           if (!scan.win) return scan.failed;
+          // Under .conditions(), the merged result is trimmed and logged.
+          if (this._conditionScan) return scan.result;
           const result = this._applyReportOnly(scan.result);
           this._logFindings(result, scan.win);
           this._logScanGaps(result);
@@ -415,6 +597,9 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         (e) => ({ key: framePath.map((_, i) => `frame-${i}`), error: (e && e.message) || String(e) })
       ))
       .then(({ key, error }) => {
+        // Under .conditions(), the condition is in the file name, so it
+        // doesn't overwrite the default scan's picture.
+        if (this._screenshotCondition) key = key.concat(`condition:${this._screenshotCondition}`);
         const { elements, unlocated } = planScreenshots(result, { outcomes: options.outcomes, frameKey: key });
         for (const occurrence of unlocated) occurrence.screenshot = { skipped: 'no-element' };
         let chain = cy.wrap(null, { log: false });
@@ -576,17 +761,18 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         message: gap.message,
       });
     }
-    // The internals-hook note, once per builder: custom elements the hook
-    // would have let the engine read.
-    if (this._saidInternalsNote) return;
-    const note = getScanNotes(result).find((n) => n.kind === 'internals-hook');
-    if (!note) return;
-    this._saidInternalsNote = true;
-    Cypress.log({
-      name: 'surea11y scan note',
-      consoleProps: () => note,
-      message: note.message,
-    });
+    // The internals-hook and listener-hook notes, each once per builder:
+    // elements one of the hooks would have let the engine judge.
+    const said = this._saidHookNotes || (this._saidHookNotes = new Set());
+    for (const note of getScanNotes(result)) {
+      if ((note.kind !== 'internals-hook' && note.kind !== 'listener-hook') || said.has(note.kind)) continue;
+      said.add(note.kind);
+      Cypress.log({
+        name: 'surea11y scan note',
+        consoleProps: () => note,
+        message: note.message,
+      });
+    }
   }
 
   /**
@@ -699,4 +885,10 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   }
 }
 
-module.exports = { A11yCoreBuilder, installInternalsHook };
+module.exports = {
+  A11yCoreBuilder,
+  installInternalsHook,
+  installListenerHook,
+  installLiveRegionHook,
+  getAnnouncements
+};

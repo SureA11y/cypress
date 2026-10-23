@@ -1,7 +1,13 @@
 'use strict';
 
-const { A11yCoreBuilder, installInternalsHook } = require('./A11yCoreBuilder');
+const {
+  A11yCoreBuilder,
+  installInternalsHook,
+  installListenerHook,
+  installLiveRegionHook,
+  getAnnouncements
+} = require('./A11yCoreBuilder');
 const { formatFailures } = require('./formatFailures');
-const { getScanGaps, getScanNotes, formatOccurrenceLocation } = require('@surea11y/binding-base');
+const { getScanGaps, getScanNotes, formatOccurrenceLocation, getGatingFailures, SEVERITIES } = require('@surea11y/binding-base');
 
-module.exports = { A11yCoreBuilder, installInternalsHook, formatFailures, getScanGaps, getScanNotes, formatOccurrenceLocation };
+module.exports = { A11yCoreBuilder, installInternalsHook, installListenerHook, installLiveRegionHook, getAnnouncements, formatFailures, getScanGaps, getScanNotes, formatOccurrenceLocation, getGatingFailures, SEVERITIES };

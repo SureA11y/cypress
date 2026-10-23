@@ -41,6 +41,8 @@ export type CheckResultMeta = Core.RuleMeta;
 export type CompositeResultDetails = Core.CompositeResult['data']['details'];
 
 export interface Occurrence extends Core.Occurrence {
+  /** With .conditions(): the conditions it was found under, 'default' for the page as it was. */
+  conditions?: string[];
   /**
    * Only present when `.elementRef(true)` was used. `null` when this
    * occurrence has no single resolvable target element (e.g. `selector` was
@@ -87,6 +89,8 @@ export interface CheckResult extends Omit<Core.CheckResult, 'occurrences'> {
 
 /** surea11y's native top-level result shape -- see docs/OUTPUT_SCHEMA.md. */
 export interface A11yCoreResult extends Omit<Core.ScanResult, 'checksResults'> {
+  /** With .conditions(): each scan's condition ('default' first) and environment. */
+  conditionRuns?: Array<{ condition: string; environment: Record<string, unknown> | null }>;
   checksResults: CheckResult[];
 }
 
@@ -136,6 +140,13 @@ export class A11yCoreBuilder {
 
   /** The same as the exported installInternalsHook(). */
   static installInternalsHook(win?: Window): void;
+
+  /** The same as the exported installListenerHook(). */
+  static installListenerHook(win?: Window): void;
+  /** The same as the exported installLiveRegionHook(). */
+  static installLiveRegionHook(win?: Window): void;
+  /** The same as the exported getAnnouncements(). */
+  static getAnnouncements(): Cypress.Chainable<Announcement[] | null>;
 
   /**
    * Scope the scan to one region. Call multiple times for a multi-region
@@ -216,6 +227,15 @@ export class A11yCoreBuilder {
   reportOnly(outcomes: Outcome | Outcome[]): this;
   /** Opt in to also scanning every same-origin sub-frame reachable from the top window. */
   frames(enabled?: boolean): this;
+  /**
+   * Also scan the page under each condition after scanning it as it is
+   * (@surea11y/binding-base 1.6.0): a color scheme, a viewport width, or
+   * both. analyze() returns one merged result: a rule's outcome is its worst
+   * across the scans, each occurrence lists the `conditions` it appeared
+   * under, and `conditionRuns` gives each scan's environment. The viewport
+   * and scheme are put back afterwards. Not combined with frames(true) yet.
+   */
+  conditions(list: ReadonlyArray<ScanCondition> | null): this;
   /** Opt in to resolving each fail/cantTell occurrence's selector to a live DOM Element. */
   elementRef(enabled?: boolean): this;
   /**
@@ -262,8 +282,24 @@ export class A11yCoreBuilder {
  */
 export function formatFailures(
   input: A11yCoreResult | ScanResultLike | ReadonlyArray<CheckResult>,
-  opts?: { outcomes?: Outcome[] }
+  opts?: { outcomes?: Outcome[]; failOnSeverity?: Severity }
 ): string;
+
+/** The four severities, least to most severe (@surea11y/binding-base 1.6.0 and later). */
+export const SEVERITIES: ReadonlyArray<Severity>;
+
+/**
+ * The failing rule results that should fail a test: every `fail`, or with
+ * `failOnSeverity` only those whose severity is that level or above, as
+ * `surea11y scan --fail-on-severity` counts them. `fail` keeps its meaning;
+ * the level only picks which failures stop the test. Throws a TypeError for
+ * a level that is not a severity. From @surea11y/binding-base 1.6.0.
+ */
+export function getGatingFailures(
+  input: A11yCoreResult | ReadonlyArray<CheckResult>,
+  opts?: { failOnSeverity?: Severity }
+): CheckResult[];
+
 
 /**
  * What one scan result says it left out, which its checksResults alone
@@ -285,9 +321,11 @@ export function formatOccurrenceLocation(occurrence: OccurrenceLocation | null |
 
 /**
  * How one scan result's page was scanned, which a gap doesn't cover:
- * `forced-colors` when it was shown in forced colors, and `internals-hook`
+ * `forced-colors` when it was shown in forced colors, `internals-hook`
  * when the scan asked about web components it could have read with the
- * internals hook.
+ * internals hook, and `listener-hook` when it asked about click or pointer
+ * handlers whose keyboard equivalent the listener hook would have let it
+ * see.
  */
 export function getScanNotes(result: A11yCoreResult | ScanResultLike): ScanNote[];
 
@@ -299,3 +337,41 @@ export function getScanNotes(result: A11yCoreResult | ScanResultLike): ScanNote[
  * `cy.visit(url, { onBeforeLoad: installInternalsHook })`.
  */
 export function installInternalsHook(win?: Window): void;
+
+/**
+ * Installs @surea11y/core's opt-in listener hook (core 1.14.0 and later), so
+ * the keyboard rules see the listeners the app adds from script. Called as
+ * installInternalsHook() is: with no argument, in the support file, for
+ * every visit from then on; with a window, for
+ * `cy.visit(url, { onBeforeLoad: installListenerHook })`.
+ */
+export function installListenerHook(win?: Window): void;
+
+/**
+ * Installs @surea11y/core's opt-in live-region hook (core 1.14.0 and later),
+ * which records what the app's live regions are given from the load event
+ * on. Called as installInternalsHook() is.
+ */
+export function installLiveRegionHook(win?: Window): void;
+
+/** A text a live region was given while shown and reachable. */
+export interface Announcement {
+  text: string;
+  politeness: 'polite' | 'assertive';
+  /** performance.now() in the app, in milliseconds. */
+  time: number;
+}
+
+/**
+ * Yields what the app's live regions were given while shown and reachable,
+ * as the live-region hook recorded it, in order; null without the hook.
+ * What the app made available to announce, not what a screen reader said.
+ */
+export function getAnnouncements(): Cypress.Chainable<Announcement[] | null>;
+
+/** A condition to scan the page under with .conditions(). */
+export interface ScanCondition {
+  colorScheme?: 'light' | 'dark';
+  /** The viewport's width in CSS pixels; its height is kept. */
+  width?: number;
+}

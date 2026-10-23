@@ -10,13 +10,18 @@ import {
   getScanGaps,
   getScanNotes,
   installInternalsHook,
+  installListenerHook,
+  installLiveRegionHook,
+  getAnnouncements,
   formatOccurrenceLocation,
   type A11yCoreResult,
   type A11yCoreMultiFrameResult,
   type CheckResult,
   type EngineErrorCode,
   type ScanGap,
-  type WcagVersion
+  type WcagVersion,
+  getGatingFailures,
+  SEVERITIES
 } from '../../src/index';
 
 declare const result: A11yCoreResult;
@@ -53,6 +58,16 @@ for (const note of getScanNotes(result)) {
 installInternalsHook();
 A11yCoreBuilder.installInternalsHook();
 cy.visit('/', { onBeforeLoad: installInternalsHook });
+installListenerHook();
+A11yCoreBuilder.installListenerHook();
+cy.visit('/', { onBeforeLoad: installListenerHook });
+installLiveRegionHook();
+A11yCoreBuilder.installLiveRegionHook();
+cy.visit('/', { onBeforeLoad: installLiveRegionHook });
+getAnnouncements().then((said) => {
+  const texts: string[] = (said || []).map((a) => `${a.politeness}: ${a.text}`);
+});
+A11yCoreBuilder.getAnnouncements();
 
 const code: EngineErrorCode = 'INVALID_ENGINE_OPTIONS';
 const wcag: WcagVersion = '2.2';
@@ -98,3 +113,9 @@ new A11yCoreBuilder().withWcag('2.2', 'aa').plannedChecks().then((checks) => che
 new A11yCoreBuilder().withWcag('2.2', 'aa').plannedCriteria().then((criteria) => criteria.map((r) => r.id));
 
 export { plannedTask, asCore, version, scanned, skipped, hosts, path, element, headroom, message, where, code, config, task };
+
+declare const gateResult: Parameters<typeof getGatingFailures>[0];
+const gatingIds: string[] = getGatingFailures(gateResult, { failOnSeverity: SEVERITIES[2] }).map((c) => c.ruleId);
+
+declare const conditionResult: A11yCoreResult;
+const seenIn: string[] = (conditionResult.checksResults[0].occurrences[0].conditions || []).concat((conditionResult.conditionRuns || []).map((r) => r.condition));

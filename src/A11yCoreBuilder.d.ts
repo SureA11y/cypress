@@ -139,6 +139,10 @@ export class A11yCoreBuilder {
 
   /** The same as the exported installListenerHook(). */
   static installListenerHook(win?: Window): void;
+  /** The same as the exported installLiveRegionHook(). */
+  static installLiveRegionHook(win?: Window): void;
+  /** The same as the exported getAnnouncements(). */
+  static getAnnouncements(): Cypress.Chainable<Announcement[] | null>;
 
   /**
    * Scope the scan to one region. Call multiple times for a multi-region
@@ -313,3 +317,25 @@ export function installInternalsHook(win?: Window): void;
  * `cy.visit(url, { onBeforeLoad: installListenerHook })`.
  */
 export function installListenerHook(win?: Window): void;
+
+/**
+ * Installs @surea11y/core's opt-in live-region hook (core 1.14.0 and later),
+ * which records what the app's live regions are given from the load event
+ * on. Called as installInternalsHook() is.
+ */
+export function installLiveRegionHook(win?: Window): void;
+
+/** A text a live region was given while shown and reachable. */
+export interface Announcement {
+  text: string;
+  politeness: 'polite' | 'assertive';
+  /** performance.now() in the app, in milliseconds. */
+  time: number;
+}
+
+/**
+ * Yields what the app's live regions were given while shown and reachable,
+ * as the live-region hook recorded it, in order; null without the hook.
+ * What the app made available to announce, not what a screen reader said.
+ */
+export function getAnnouncements(): Cypress.Chainable<Announcement[] | null>;

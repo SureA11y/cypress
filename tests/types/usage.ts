@@ -11,6 +11,8 @@ import {
   getScanNotes,
   installInternalsHook,
   installListenerHook,
+  installLiveRegionHook,
+  getAnnouncements,
   formatOccurrenceLocation,
   type A11yCoreResult,
   type A11yCoreMultiFrameResult,
@@ -57,6 +59,13 @@ cy.visit('/', { onBeforeLoad: installInternalsHook });
 installListenerHook();
 A11yCoreBuilder.installListenerHook();
 cy.visit('/', { onBeforeLoad: installListenerHook });
+installLiveRegionHook();
+A11yCoreBuilder.installLiveRegionHook();
+cy.visit('/', { onBeforeLoad: installLiveRegionHook });
+getAnnouncements().then((said) => {
+  const texts: string[] = (said || []).map((a) => `${a.politeness}: ${a.text}`);
+});
+A11yCoreBuilder.getAnnouncements();
 
 const code: EngineErrorCode = 'INVALID_ENGINE_OPTIONS';
 const wcag: WcagVersion = '2.2';

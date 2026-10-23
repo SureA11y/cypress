@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Live regions</title></head>
+<body>
+  <main>
+    <h1>Live regions</h1>
+    <div id="status" role="status"></div>
+    <div id="toasts"></div>
+    <button id="save" type="button">Save</button>
+    <button id="copy" type="button">Copy</button>
+  </main>
+  <script>
+    document.getElementById('save').addEventListener('click', () => {
+      document.getElementById('status').textContent = 'Saved';
+    });
+    document.getElementById('copy').addEventListener('click', () => {
+      document.getElementById('toasts').innerHTML = '<div role="status">Copied</div>';
+    });
+  </script>
+</body>
+</html>

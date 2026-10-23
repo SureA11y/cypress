@@ -372,6 +372,33 @@ With it:
 - **For test and audit runs.** The hook wraps `addEventListener`, `removeEventListener` and the `on…` property setters (listeners themselves aren't wrapped, and run as before), and keeps its record under a global symbol. That's why it's opt-in.
 - **Without it**, the Command Log shows a `surea11y scan note` when the scan asked about an inline click or pointer handler whose keyboard equivalent may have been added from script, and `getScanNotes()` gives that note as `kind: 'listener-hook'`.
 
+### Status messages: the live-region hook
+
+A status message ("Saved", "3 results") reaches a screen reader when a live region's content changes while the screen reader can reach it (WCAG 4.1.3). A scan sees the page at one moment, after the message came, so by itself it can only judge the live regions that are there: `live-region-announcements` asks about one hidden from assistive technology with `aria-hidden` or `inert`, or left `aria-busy`.
+
+`installLiveRegionHook()`, from `@surea11y/cypress`, (`@surea11y/core` 1.14.0 and later) installs core's opt-in hook, which records what live regions are given from the load event on. Call it **before** the page loads, as the other hooks. `getAnnouncements()` then yields what the app made available to announce, in order:
+
+```js
+// cypress/support/e2e.js: every visit from then on gets it
+import { installLiveRegionHook, getAnnouncements } from '@surea11y/cypress';
+installLiveRegionHook();
+
+// In a spec
+cy.visit('/');
+cy.get('#save').click();
+
+getAnnouncements().then((said) => {
+  expect(said.map((a) => a.text)).to.include('Saved');
+});
+// [{ text: 'Saved', politeness: 'polite', time: 1834 }]
+```
+
+With it, `live-region-announcements` also asks about a region the page added with its text already in it (`LIVE_REGION_INSERTED_WITH_CONTENT`; `role="alert"` is left out, since an alert added that way is announced) and a hidden region shown and filled at once (`LIVE_REGION_SHOWN_AND_FILLED`), even if it has left the page since, like a toast. The result records the hook in `engine.environment.liveRegionHook`.
+
+- **What it says.** `getAnnouncements()` is what the page made available to announce: the text a shown live region, reachable by assistive technology, was given. Not what a screen reader said, which depends on the screen reader. It returns `null` without the hook.
+- **For test and audit runs.** The hook only observes, with one `MutationObserver`, and keeps its record under a global symbol. That's why it's opt-in.
+- **For one visit.** `cy.visit(url, { onBeforeLoad: installLiveRegionHook })` installs it for that visit only, as the other hooks.
+
 ### Forced colors
 
 A page shown in forced colors (Windows high contrast) draws in the user's colors, not its own. `results.engine.environment.forcedColors` says which it was: `'active'` or `'none'`. To check a page under forced colors on purpose, emulate it through the DevTools protocol before visiting, in Chrome, Edge or Electron:
@@ -508,6 +535,7 @@ An occurrence inside a shadow tree also carries `shadowHostSelectors`: the selec
 
 With `@surea11y/core` 1.14.0, what a scan through this binding shows differently (core's [`CHANGELOG.md`](https://github.com/SureA11y/core/blob/main/CHANGELOG.md) has the full list):
 
+- **Status messages.** `live-region-announcements` (4.1.3) asks about a live region hidden with `aria-hidden` or `inert`, or left `aria-busy`. With [`installLiveRegionHook()`](#status-messages-the-live-region-hook) it also asks about one added with its text or shown and filled at once, and `getAnnouncements()` reads what the page made available to announce.
 - **Listeners added from script.** With [`installListenerHook()`](#listeners-added-from-script-the-listener-hook), `click-handler-keyboard-operable` judges a click listener added with `addEventListener` as an inline `onclick`, and fails a focusable control that no key listener can reach (`CLICK_HANDLER_NO_KEY_LISTENER`); `mouse-only-event-handlers` asks about pointer listeners added from script. Both rules' messages now say "click handler" rather than "onclick handler".
 - **Roles that depend on context.** `aria-allowed-attr` no longer fails `aria-expanded` on a text input whose `list` names a `<datalist>` (a combobox), and now judges `<td>`: `cell` in a table, `gridcell` in a grid. `label-in-name` checks a `<td>` in a grid. `heading-order` and `page-has-heading-one` count a heading marked `role="none"` that can take focus or has a global ARIA attribute, as browsers do.
 - **Style sheets from another origin are checked.** `analyze()` fetches, in the page, the style sheets it can't read whose server shares them, and core checks them, so `css-orientation-lock` finds a lock in a CDN's CSS instead of asking (`.fetchStyleSheets(false)` turns it off). [More](#style-sheets-from-another-origin).

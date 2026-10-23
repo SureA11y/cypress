@@ -1,6 +1,13 @@
 'use strict';
 
-const { runa11yCoreInPage, internalsHookScript, listenerHookScript, preloadStyleSheets } = require('@surea11y/core');
+const {
+  runa11yCoreInPage,
+  internalsHookScript,
+  listenerHookScript,
+  liveRegionHookScript,
+  getAnnouncements: readAnnouncements,
+  preloadStyleSheets
+} = require('@surea11y/core');
 // The tasks @surea11y/cypress/plugin (src/plugin.js) registers: one prepares
 // packs in Node, one lists what a scan will check. Named here, not imported:
 // this file runs in the browser.
@@ -66,6 +73,43 @@ function installListenerHook(win) {
       throw new TypeError('installListenerHook() needs @surea11y/core 1.14.0 or later, which has listenerHookScript().');
     }
     return listenerHookScript();
+  });
+}
+
+/**
+ * Installs @surea11y/core's opt-in live-region hook (core 1.14.0 and later),
+ * which records what the app's live regions are given from the load event
+ * on: live-region-announcements then asks about a region added with its
+ * text already in it, or shown and filled at once, and getAnnouncements()
+ * reads what the app made available to announce. Called as
+ * installInternalsHook() is: with no argument, in the support file, for
+ * every visit from then on; or with a window,
+ * `cy.visit(url, { onBeforeLoad: installLiveRegionHook })`.
+ * @param {Window} [win]
+ */
+function installLiveRegionHook(win) {
+  installBeforeLoad('installLiveRegionHook', win, () => {
+    if (typeof liveRegionHookScript !== 'function') {
+      throw new TypeError('installLiveRegionHook() needs @surea11y/core 1.14.0 or later, which has liveRegionHookScript().');
+    }
+    return liveRegionHookScript();
+  });
+}
+
+/**
+ * Yields what the app's live regions were given while shown and reachable by
+ * assistive technology, as the live-region hook recorded it:
+ * [{ text, politeness, time }] in the order the app did it, or null when the
+ * app's window has no hook. What the app made available to announce, not
+ * what a screen reader said. A Cypress chainable, like analyze().
+ */
+function getAnnouncements() {
+  if (typeof readAnnouncements !== 'function') {
+    throw new TypeError('getAnnouncements() needs @surea11y/core 1.14.0 or later, which has getAnnouncements().');
+  }
+  return cy.window({ log: false }).then((win) => {
+    const list = readAnnouncements(win);
+    return list ? list.map((a) => ({ text: a.text, politeness: a.politeness, time: a.time })) : null;
   });
 }
 
@@ -230,6 +274,16 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   /** The same as the exported installListenerHook(), as every binding's builder has it. */
   static installListenerHook(win) {
     return installListenerHook(win);
+  }
+
+  /** The same as the exported installLiveRegionHook(), as every binding's builder has it. */
+  static installLiveRegionHook(win) {
+    return installLiveRegionHook(win);
+  }
+
+  /** The same as the exported getAnnouncements(), as every binding's builder has it. */
+  static getAnnouncements() {
+    return getAnnouncements();
   }
 
   /**
@@ -734,4 +788,10 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   }
 }
 
-module.exports = { A11yCoreBuilder, installInternalsHook, installListenerHook };
+module.exports = {
+  A11yCoreBuilder,
+  installInternalsHook,
+  installListenerHook,
+  installLiveRegionHook,
+  getAnnouncements
+};

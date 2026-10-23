@@ -1,6 +1,6 @@
 'use strict';
 
-const { runa11yCoreInPage, internalsHookScript, preloadStyleSheets } = require('@surea11y/core');
+const { runa11yCoreInPage, internalsHookScript, listenerHookScript, preloadStyleSheets } = require('@surea11y/core');
 // The tasks @surea11y/cypress/plugin (src/plugin.js) registers: one prepares
 // packs in Node, one lists what a scan will check. Named here, not imported:
 // this file runs in the browser.
@@ -30,8 +30,6 @@ function evaluateInFrame(win, fn, args) {
   return win.eval('(' + fn.toString() + ')')(...args);
 }
 
-let hookRegistered = false;
-
 /**
  * Installs @surea11y/core's opt-in internals hook, so a scan can read the
  * names, states and roles web components set through a private
@@ -49,19 +47,50 @@ let hookRegistered = false;
  * @param {Window} [win]
  */
 function installInternalsHook(win) {
+  installBeforeLoad('installInternalsHook', win, () => internalsHookScript());
+}
+
+/**
+ * Installs @surea11y/core's opt-in listener hook (core 1.14.0 and later), so
+ * the keyboard rules see the click, key, focus and mouse listeners the app
+ * adds from script (addEventListener, or an onclick-style property), not
+ * only inline handler attributes. Called as installInternalsHook() is: with
+ * no argument, in the support file, for every visit from then on; or with a
+ * window, `cy.visit(url, { onBeforeLoad: installListenerHook })`. The two
+ * can be installed together.
+ * @param {Window} [win]
+ */
+function installListenerHook(win) {
+  installBeforeLoad('installListenerHook', win, () => {
+    if (typeof listenerHookScript !== 'function') {
+      throw new TypeError('installListenerHook() needs @surea11y/core 1.14.0 or later, which has listenerHookScript().');
+    }
+    return listenerHookScript();
+  });
+}
+
+// The window:before:load handlers registered so far, one per hook.
+const registeredHooks = new Set();
+
+// Runs `getSource()`'s script with the app window's eval: in `win`, for one
+// visit, or, with no window, in every app window from now on, before the
+// app's scripts. `name` names the function in errors, and registers each
+// hook once.
+function installBeforeLoad(name, win, getSource) {
   if (win !== undefined) {
     if (!win || typeof win.eval !== 'function') {
-      throw new TypeError('installInternalsHook(): expected the app\'s window (as onBeforeLoad gives it), or no argument to install it on every visit.');
+      throw new TypeError(`${name}(): expected the app's window (as onBeforeLoad gives it), or no argument to install it on every visit.`);
     }
-    win.eval(internalsHookScript());
+    win.eval(getSource());
     return;
   }
   if (typeof Cypress === 'undefined' || typeof Cypress.on !== 'function') {
-    throw new Error('installInternalsHook(): call it from a Cypress support file or spec.');
+    throw new Error(`${name}(): call it from a Cypress support file or spec.`);
   }
-  if (hookRegistered) return;
-  hookRegistered = true;
-  Cypress.on('window:before:load', (appWindow) => appWindow.eval(internalsHookScript()));
+  if (registeredHooks.has(name)) return;
+  const source = getSource();
+  registeredHooks.add(name);
+  Cypress.on('window:before:load', (appWindow) => appWindow.eval(source));
 }
 
 /**
@@ -196,6 +225,11 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   /** The same as the exported installInternalsHook(), as every binding's builder has it. */
   static installInternalsHook(win) {
     return installInternalsHook(win);
+  }
+
+  /** The same as the exported installListenerHook(), as every binding's builder has it. */
+  static installListenerHook(win) {
+    return installListenerHook(win);
   }
 
   /**
@@ -576,17 +610,18 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         message: gap.message,
       });
     }
-    // The internals-hook note, once per builder: custom elements the hook
-    // would have let the engine read.
-    if (this._saidInternalsNote) return;
-    const note = getScanNotes(result).find((n) => n.kind === 'internals-hook');
-    if (!note) return;
-    this._saidInternalsNote = true;
-    Cypress.log({
-      name: 'surea11y scan note',
-      consoleProps: () => note,
-      message: note.message,
-    });
+    // The internals-hook and listener-hook notes, each once per builder:
+    // elements one of the hooks would have let the engine judge.
+    const said = this._saidHookNotes || (this._saidHookNotes = new Set());
+    for (const note of getScanNotes(result)) {
+      if ((note.kind !== 'internals-hook' && note.kind !== 'listener-hook') || said.has(note.kind)) continue;
+      said.add(note.kind);
+      Cypress.log({
+        name: 'surea11y scan note',
+        consoleProps: () => note,
+        message: note.message,
+      });
+    }
   }
 
   /**
@@ -699,4 +734,4 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   }
 }
 
-module.exports = { A11yCoreBuilder, installInternalsHook };
+module.exports = { A11yCoreBuilder, installInternalsHook, installListenerHook };

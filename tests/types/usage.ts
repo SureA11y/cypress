@@ -10,6 +10,7 @@ import {
   getScanGaps,
   getScanNotes,
   installInternalsHook,
+  installListenerHook,
   formatOccurrenceLocation,
   type A11yCoreResult,
   type A11yCoreMultiFrameResult,
@@ -53,6 +54,9 @@ for (const note of getScanNotes(result)) {
 installInternalsHook();
 A11yCoreBuilder.installInternalsHook();
 cy.visit('/', { onBeforeLoad: installInternalsHook });
+installListenerHook();
+A11yCoreBuilder.installListenerHook();
+cy.visit('/', { onBeforeLoad: installListenerHook });
 
 const code: EngineErrorCode = 'INVALID_ENGINE_OPTIONS';
 const wcag: WcagVersion = '2.2';

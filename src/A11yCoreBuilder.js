@@ -23,7 +23,9 @@ const {
   screenshotFrameKey,
   screenshotToken,
   prepareElementScreenshot,
-  releaseElementScreenshot
+  releaseElementScreenshot,
+  conditionLabel,
+  mergeConditionResults
 } = require('@surea11y/binding-base');
 
 // Where .screenshots() pictures go without `dir`, under Cypress's own
@@ -321,6 +323,10 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * @returns {Cypress.Chainable<object>} see surea11y's docs/OUTPUT_SCHEMA.md
    */
   analyze() {
+    // .conditions() (binding-base 1.6.0) and .frames(true) can't be combined
+    // yet; refused before any command.
+    if (this._conditions) this._assertConditionsAlone();
+    const scan = () => (this._conditions ? this._scanUnderConditionsCy() : this._scan());
     // withPacks() names modules; the plugin (src/plugin.js) prepares them in
     // Node and returns the script that registers them, before the scan.
     if (this._packSpecs && this._packSpecs.length) {
@@ -328,10 +334,99 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         .task(TASK, { packs: this._packSpecs }, { log: false })
         .then((prepared) => {
           this._preparedPacks = prepared;
-          return this._scan();
+          return scan();
         });
     }
-    return this._scan();
+    return scan();
+  }
+
+  /**
+   * .conditions() in Cypress: the page as it is, then under each condition,
+   * each scan a chain of Cypress commands, merged into one result
+   * (binding-base's mergeConditionResults()). A width goes through
+   * cy.viewport(), the height kept; a color scheme through the DevTools
+   * protocol (Cypress.automation('remote:debugger:protocol') with
+   * Emulation.setEmulatedMedia), so only in a Chromium-family browser:
+   * elsewhere it is refused before any scan. Each condition sets both, from
+   * the page as it was. At the end the viewport and the scheme go back to
+   * what they were, set explicitly (light or dark), whether the system or
+   * the test chose it; if the test fails on the way, the scheme is put back
+   * too (Cypress resets the viewport itself between
+   * tests). reportOnly() and the log entries apply to the merged result.
+   * @returns {Cypress.Chainable<object>}
+   */
+  _scanUnderConditionsCy() {
+    const conditions = this._conditions;
+    if (!Cypress.isBrowser({ family: 'chromium' }) && conditions.some((c) => c.colorScheme)) {
+      throw new Error(
+        'A11yCoreBuilder.conditions(): a colorScheme needs a Chromium-family browser (Chrome, Edge, Electron), ' +
+        'whose DevTools protocol can emulate it; this run is in ' + Cypress.browser.name + '.'
+      );
+    }
+    const emulate = (value) =>
+      Cypress.automation('remote:debugger:protocol', {
+        command: 'Emulation.setEmulatedMedia',
+        params: { features: [{ name: 'prefers-color-scheme', value }] }
+      });
+    const runs = [];
+    let saved = null;
+    // The scheme the page had, which a condition without one, and the end of
+    // the scans, go back to: 'light' or 'dark', never '' (which would hand
+    // it back to the system, dark on a dark desktop).
+    let baseScheme = 'light';
+    let schemeSet = false;
+    const scheme = (value) => {
+      schemeSet = value !== baseScheme;
+      return cy.wrap(emulate(value), { log: false });
+    };
+    cy.on('fail', (error) => {
+      this._conditionScan = false;
+      this._screenshotCondition = null;
+      if (schemeSet) emulate(baseScheme).catch(() => {});
+      throw error;
+    });
+
+    this._conditionScan = true;
+    let chain = cy
+      .window({ log: false })
+      .then((win) => {
+        saved = { width: win.innerWidth, height: win.innerHeight };
+        baseScheme = win.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      })
+      .then(() => this._scan())
+      .then((result) => {
+        runs.push({ condition: 'default', result });
+      });
+    for (const condition of conditions) {
+      const label = conditionLabel(condition);
+      chain = chain
+        .then(() => {
+          this._screenshotCondition = label;
+          cy.viewport(condition.width || saved.width, saved.height, { log: false });
+          if (condition.colorScheme) return scheme(condition.colorScheme);
+          if (schemeSet) return scheme(baseScheme);
+          return null;
+        })
+        .then(() => this._scan())
+        .then((result) => {
+          runs.push({ condition: label, result });
+        });
+    }
+    return chain
+      .then(() => {
+        this._screenshotCondition = null;
+        this._conditionScan = false;
+        cy.viewport(saved.width, saved.height, { log: false });
+        if (schemeSet) return scheme(baseScheme);
+        return null;
+      })
+      .then(() => cy.window({ log: false }))
+      .then((win) => {
+        const result = this._applyReportOnly(mergeConditionResults(runs));
+        this._logFindings(result, win);
+        this._logScanGaps(result);
+        return result;
+      });
   }
 
   /**
@@ -449,6 +544,8 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
       const finish = () => {
         const results = scans.map((scan) => {
           if (!scan.win) return scan.failed;
+          // Under .conditions(), the merged result is trimmed and logged.
+          if (this._conditionScan) return scan.result;
           const result = this._applyReportOnly(scan.result);
           this._logFindings(result, scan.win);
           this._logScanGaps(result);
@@ -503,6 +600,9 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         (e) => ({ key: framePath.map((_, i) => `frame-${i}`), error: (e && e.message) || String(e) })
       ))
       .then(({ key, error }) => {
+        // Under .conditions(), the condition is in the file name, so it
+        // doesn't overwrite the default scan's picture.
+        if (this._screenshotCondition) key = key.concat(`condition:${this._screenshotCondition}`);
         const { elements, unlocated } = planScreenshots(result, { outcomes: options.outcomes, frameKey: key });
         for (const occurrence of unlocated) occurrence.screenshot = { skipped: 'no-element' };
         let chain = cy.wrap(null, { log: false });

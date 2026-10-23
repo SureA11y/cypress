@@ -139,6 +139,21 @@ it('has no accessibility violations', () => {
 
 `getScanNotes(result)` says how the page was scanned, which a gap doesn't cover, and nothing was left out: `'forced-colors'` when the page was shown in [forced colors](#forced-colors), `'internals-hook'` when the scan asked about web components it could have read with the [internals hook](#web-components-the-internals-hook), and `'listener-hook'` when it asked about handlers whose keyboard equivalent the [listener hook](#listeners-added-from-script-the-listener-hook) would have let it see.
 
+### Failing only on serious problems
+
+Every rule result has a severity: `critical`, `serious`, `moderate` or `minor` (a profile can set its own). To start by blocking on serious problems while the rest are still reported, gate on `getGatingFailures(results, { failOnSeverity })` (`@surea11y/binding-base` 1.6.0 and later): the failing rules at that level or above, the same ones `surea11y scan --fail-on-severity` counts for the page. `formatFailures()` takes the same option and still lists the failures below the level, marked as ones that don't fail the test.
+
+```js
+import { A11yCoreBuilder, formatFailures, getGatingFailures } from '@surea11y/cypress';
+
+new A11yCoreBuilder().analyze().then((results) => {
+  const gate = { failOnSeverity: 'serious' };
+  expect(getGatingFailures(results, gate), formatFailures(results, gate)).to.deep.equal([]);
+});
+```
+
+`fail` keeps its meaning, a definite violation; the level only picks which failures stop the test, and every failure stays in `results`. A level that isn't one of the four throws a `TypeError`. `SEVERITIES` lists them, least to most severe.
+
 ### Readable console/CI output on failure
 
 A bare length/equality assertion alone gets you a *working* gate, but the failure message is a raw, deeply-nested object diff. `formatFailures(results)` turns that into a short, scannable block (one entry per occurrence, numbered, with rule ID/severity/location/hint) that you hand to Chai's own failure-message parameter, as above. Given the whole result, it then lists what the scan left out and ends with the `@surea11y/core` release that produced the result, for a bug report to quote. A real failure then prints:

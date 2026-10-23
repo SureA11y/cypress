@@ -19,7 +19,9 @@ import {
   type CheckResult,
   type EngineErrorCode,
   type ScanGap,
-  type WcagVersion
+  type WcagVersion,
+  getGatingFailures,
+  SEVERITIES
 } from '../../src/index';
 
 declare const result: A11yCoreResult;
@@ -111,3 +113,6 @@ new A11yCoreBuilder().withWcag('2.2', 'aa').plannedChecks().then((checks) => che
 new A11yCoreBuilder().withWcag('2.2', 'aa').plannedCriteria().then((criteria) => criteria.map((r) => r.id));
 
 export { plannedTask, asCore, version, scanned, skipped, hosts, path, element, headroom, message, where, code, config, task };
+
+declare const gateResult: Parameters<typeof getGatingFailures>[0];
+const gatingIds: string[] = getGatingFailures(gateResult, { failOnSeverity: SEVERITIES[2] }).map((c) => c.ruleId);

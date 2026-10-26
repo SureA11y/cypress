@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <title>listener hook fixture</title>
+</head>
+<body>
+  <main>
+    <h1>Settings</h1>
+    <!-- A button only through its role, given its click listener from
+         script: Enter and Space do nothing on it. -->
+    <div id="scripted" class="save" role="button" tabindex="0">Save</div>
+    <!-- The same, with a keydown listener of its own. -->
+    <div id="keyed" role="button" tabindex="0">Send</div>
+    <!-- The same with an inline handler, which the scan sees without the
+         hook, and asks about: it can't tell whether a key listener was
+         added from script. -->
+    <div id="inline" role="button" tabindex="0" onclick="openMenu()">Open</div>
+  </main>
+  <script>
+    function openMenu() {}
+    document.querySelector('.save').addEventListener('click', () => {});
+    document.getElementById('keyed').addEventListener('click', () => {});
+    document.getElementById('keyed').addEventListener('keydown', () => {});
+  </script>
+</body>
+</html>

@@ -38,8 +38,6 @@ module.exports = defineConfig({
       const options = webpackPreprocessor.defaultOptions;
       options.webpackOptions.resolve.symlinks = false;
       on('file:preprocessor', webpackPreprocessor(options));
-      // withPacks(): packs are prepared in Node (src/plugin.js).
-      surea11y(on, config);
       // For the tests: core's SARIF reporter hashes with Node's crypto, so it
       // runs in Node rather than in the spec.
       on('task', {
@@ -52,6 +50,10 @@ module.exports = defineConfig({
           return { width: png.width, height: png.height, colour: Array.from(png.rows.subarray(at, at + 3)) };
         }
       });
+      // withPacks(), the planned lists and the steps for questions are worked
+      // out in Node (src/plugin.js); the config it returns tells the specs
+      // it is registered.
+      return surea11y(on, config);
     }
   }
 });

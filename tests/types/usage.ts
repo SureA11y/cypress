@@ -12,8 +12,9 @@ import {
   installInternalsHook,
   installListenerHook,
   installLiveRegionHook,
-  getAnnouncements,
   formatOccurrenceLocation,
+  type LocatedAnnouncement,
+  type ReviewGroup,
   type A11yCoreResult,
   type A11yCoreMultiFrameResult,
   type CheckResult,
@@ -59,15 +60,21 @@ installInternalsHook();
 A11yCoreBuilder.installInternalsHook();
 cy.visit('/', { onBeforeLoad: installInternalsHook });
 installListenerHook();
-A11yCoreBuilder.installListenerHook();
-cy.visit('/', { onBeforeLoad: installListenerHook });
 installLiveRegionHook();
+A11yCoreBuilder.installListenerHook();
 A11yCoreBuilder.installLiveRegionHook();
-cy.visit('/', { onBeforeLoad: installLiveRegionHook });
-getAnnouncements().then((said) => {
-  const texts: string[] = (said || []).map((a) => `${a.politeness}: ${a.text}`);
+cy.visit('/', { onBeforeLoad: (win) => { installListenerHook(win); installLiveRegionHook(win); } });
+A11yCoreBuilder.announcements({ includeBehindModal: true }).then((said: LocatedAnnouncement[] | null) => {
+  const regions: Array<string | null> = (said ?? []).map((a) => a.selector);
+  void regions;
 });
-A11yCoreBuilder.getAnnouncements();
+const group: ReviewGroup = 'leanFail';
+const review: string = formatFailures(result, { outcomes: ['fail', group, 'open'], howToCheck: true });
+for (const note of getScanNotes(result, { hookReasonCodes: null })) {
+  if (note.kind === 'listener-hook' || note.kind === 'live-region-hook') note.rules.join(', ');
+}
+const steps: string[] | undefined = occurrence.howToCheck?.steps;
+const leans: 'fail' | 'pass' | undefined = occurrence.lean?.toward;
 
 const code: EngineErrorCode = 'INVALID_ENGINE_OPTIONS';
 const wcag: WcagVersion = '2.2';
@@ -75,12 +82,14 @@ const wcag: WcagVersion = '2.2';
 const config = defineConfig({
   e2e: {
     setupNodeEvents(on, cfg) {
-      surea11yPlugin(on, cfg);
+      return surea11yPlugin(on, cfg);
     }
   }
 });
 const task: 'surea11y:packScript' = surea11yPlugin.TASK;
 const plannedTask: 'surea11y:planned' = surea11yPlugin.PLANNED_TASK;
+const stepsTask: 'surea11y:howToCheck' = surea11yPlugin.HOW_TO_CHECK_TASK;
+const pluginKey: 'surea11yPlugin' = surea11yPlugin.PLUGIN_KEY;
 
 new A11yCoreBuilder()
   .include('main')
@@ -112,7 +121,7 @@ new A11yCoreBuilder()
 new A11yCoreBuilder().withWcag('2.2', 'aa').plannedChecks().then((checks) => checks.map((c) => c.ruleId));
 new A11yCoreBuilder().withWcag('2.2', 'aa').plannedCriteria().then((criteria) => criteria.map((r) => r.id));
 
-export { plannedTask, asCore, version, scanned, skipped, hosts, path, element, headroom, message, where, code, config, task };
+export { plannedTask, stepsTask, pluginKey, review, steps, leans, asCore, version, scanned, skipped, hosts, path, element, headroom, message, where, code, config, task };
 
 declare const gateResult: Parameters<typeof getGatingFailures>[0];
 const gatingIds: string[] = getGatingFailures(gateResult, { failOnSeverity: SEVERITIES[2] }).map((c) => c.ruleId);

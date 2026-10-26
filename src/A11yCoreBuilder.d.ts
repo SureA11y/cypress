@@ -2,7 +2,7 @@
 
 import type * as Core from '@surea11y/core';
 import type { Outcome, Severity, Confidence } from '@surea11y/core';
-import type { ScanGap, ScanNote, OccurrenceLocation, ScanResultLike, WcagVersion, WcagLevel, WcagLevelInput, PlannedCheck, PlannedCriterion, ScreenshotBox, ScreenshotSkip } from '@surea11y/binding-base';
+import type { ScanGap, ScanNote, OccurrenceLocation, ScanResultLike, WcagVersion, WcagLevel, WcagLevelInput, PlannedCheck, PlannedCriterion, ScreenshotBox, ScreenshotSkip, LocatedAnnouncement, ReviewGroup, HookReasonCodes } from '@surea11y/binding-base';
 
 // The result shapes are @surea11y/core's own types (shipped with core since
 // 1.9.0, and checked by core's tests against real scan results), so they
@@ -32,7 +32,7 @@ export type {
   EngineErrorCode
 } from '@surea11y/core';
 
-export type { ScanGap, ScanNote, OccurrenceLocation, WcagVersion, WcagLevel, WcagLevelInput, PlannedCheck, PlannedCriterion };
+export type { ScanGap, ScanNote, OccurrenceLocation, WcagVersion, WcagLevel, WcagLevelInput, PlannedCheck, PlannedCriterion, LocatedAnnouncement, ReviewGroup, HookReasonCodes };
 
 export type Category = Core.RuleMeta['category'];
 /** An open set: core can add a value in a minor release. */
@@ -140,13 +140,19 @@ export class A11yCoreBuilder {
 
   /** The same as the exported installInternalsHook(). */
   static installInternalsHook(win?: Window): void;
-
   /** The same as the exported installListenerHook(). */
   static installListenerHook(win?: Window): void;
   /** The same as the exported installLiveRegionHook(). */
   static installLiveRegionHook(win?: Window): void;
-  /** The same as the exported getAnnouncements(). */
-  static getAnnouncements(): Cypress.Chainable<Announcement[] | null>;
+
+  /**
+   * What the app's live regions were given since it loaded, in order, each
+   * region named by its selector; null without the live-region hook. Texts
+   * given to a region behind an open modal dialog only with
+   * `includeBehindModal: true`. A chainable, as analyze() is. Needs
+   * @surea11y/core 1.14.0 or later.
+   */
+  static announcements(options?: { includeBehindModal?: boolean }): Cypress.Chainable<LocatedAnnouncement[] | null>;
 
   /**
    * Scope the scan to one region. Call multiple times for a multi-region
@@ -259,6 +265,8 @@ export class A11yCoreBuilder {
   /**
    * Runs the scan. Returns a Cypress chainable -- use `.then()`, never
    * `await` (see this class's own header comment in A11yCoreBuilder.js).
+   * With @surea11y/cypress/plugin registered (and its config returned from
+   * setupNodeEvents), each question carries `howToCheck`, added in Node.
    * Resolves to `{ topFrame, frames }` instead of a single result when
    * `.frames(true)` was used. Fails the test with the engine's error when
    * it refuses its input, its `code` one of: `INVALID_RUN_ONLY`,
@@ -271,7 +279,11 @@ export class A11yCoreBuilder {
 
 /**
  * Formats a result's findings into a short, human-readable block -- one
- * entry per occurrence, not per rule. Meant for an assertion library's
+ * entry per occurrence, not per rule, in the order a review takes:
+ * failures, then the questions that likely fail, likely pass, and those
+ * only a person can answer. `outcomes` takes those groups too
+ * ('leanFail', 'leanPass', 'open'), and `howToCheck: true` lists each
+ * question's steps. Meant for an assertion library's
  * failure-message parameter, e.g.
  * `expect(results.checksResults.length, formatFailures(results)).to.equal(0)`.
  * Given the whole result, it also lists what the scan left out (a scope
@@ -282,7 +294,7 @@ export class A11yCoreBuilder {
  */
 export function formatFailures(
   input: A11yCoreResult | ScanResultLike | ReadonlyArray<CheckResult>,
-  opts?: { outcomes?: Outcome[]; failOnSeverity?: Severity }
+  opts?: { outcomes?: Array<Outcome | ReviewGroup>; howToCheck?: boolean; failOnSeverity?: Severity }
 ): string;
 
 /** The four severities, least to most severe (@surea11y/binding-base 1.6.0 and later). */
@@ -323,11 +335,11 @@ export function formatOccurrenceLocation(occurrence: OccurrenceLocation | null |
  * How one scan result's page was scanned, which a gap doesn't cover:
  * `forced-colors` when it was shown in forced colors, `internals-hook`
  * when the scan asked about web components it could have read with the
- * internals hook, and `listener-hook` when it asked about click or pointer
- * handlers whose keyboard equivalent the listener hook would have let it
- * see.
+ * internals hook, and `listener-hook` / `live-region-hook` when findings
+ * those hooks would have decided were judged without them. Reads core's
+ * HOOK_REASON_CODES from this bundle; `hookReasonCodes` replaces them.
  */
-export function getScanNotes(result: A11yCoreResult | ScanResultLike): ScanNote[];
+export function getScanNotes(result: A11yCoreResult | ScanResultLike, options?: { hookReasonCodes?: HookReasonCodes | null }): ScanNote[];
 
 /**
  * Installs @surea11y/core's opt-in internals hook, so a scan can read the
@@ -339,35 +351,21 @@ export function getScanNotes(result: A11yCoreResult | ScanResultLike): ScanNote[
 export function installInternalsHook(win?: Window): void;
 
 /**
- * Installs @surea11y/core's opt-in listener hook (core 1.14.0 and later), so
- * the keyboard rules see the listeners the app adds from script. Called as
- * installInternalsHook() is: with no argument, in the support file, for
- * every visit from then on; with a window, for
- * `cy.visit(url, { onBeforeLoad: installListenerHook })`.
+ * Installs @surea11y/core's opt-in listener hook, so the keyboard rules see
+ * the event listeners the app adds from script. With no argument (in the
+ * support file), on every visit from then on, before the app's scripts;
+ * with a window, in that window, for
+ * `cy.visit(url, { onBeforeLoad: installListenerHook })`. Needs
+ * @surea11y/core 1.14.0 or later.
  */
 export function installListenerHook(win?: Window): void;
 
 /**
- * Installs @surea11y/core's opt-in live-region hook (core 1.14.0 and later),
- * which records what the app's live regions are given from the load event
- * on. Called as installInternalsHook() is.
+ * Installs @surea11y/core's opt-in live-region hook, which records what the
+ * app's live regions are given (A11yCoreBuilder.announcements()). The same
+ * two forms as installListenerHook(). Needs @surea11y/core 1.14.0 or later.
  */
 export function installLiveRegionHook(win?: Window): void;
-
-/** A text a live region was given while shown and reachable. */
-export interface Announcement {
-  text: string;
-  politeness: 'polite' | 'assertive';
-  /** performance.now() in the app, in milliseconds. */
-  time: number;
-}
-
-/**
- * Yields what the app's live regions were given while shown and reachable,
- * as the live-region hook recorded it, in order; null without the hook.
- * What the app made available to announce, not what a screen reader said.
- */
-export function getAnnouncements(): Cypress.Chainable<Announcement[] | null>;
 
 /** A condition to scan the page under with .conditions(). */
 export interface ScanCondition {

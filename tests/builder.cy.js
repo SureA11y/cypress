@@ -1,6 +1,7 @@
 'use strict';
 
-const { A11yCoreBuilder, formatFailures, getScanGaps, installInternalsHook, installListenerHook } = require('../src/index.js');
+const { A11yCoreBuilder, formatFailures, getScanGaps, getScanNotes, installInternalsHook, installListenerHook, installLiveRegionHook } = require('../src/index.js');
+const { leaningFailures, occurrenceOutcome } = require('@surea11y/core');
 
 // Shared across the customRules tests below -- reported outcome depends on
 // whether ctx.document has a .my-widget element. Unlike every sibling
@@ -945,60 +946,143 @@ describe('@surea11y/core 1.12', () => {
   });
 });
 
-// The listener hook needs @surea11y/core 1.14.0, and its note
-// @surea11y/binding-base 1.6.0; these tests are skipped with older ones.
-const HAS_LISTENER_HOOK = typeof require('@surea11y/core').listenerHookScript === 'function';
-const HAS_LISTENER_NOTE = require('@surea11y/binding-base').getScanNotes({
-  checksResults: [{ outcome: 'cantTell', occurrences: [{ selector: 'div', data: { details: { reasonCode: 'CLICK_HANDLER_NO_KEY_HANDLER' } } }] }]
-}).some((n) => n.kind === 'listener-hook');
-
-describe('@surea11y/core 1.14: the listener hook', () => {
-  const FIXTURE = 'cypress/fixtures/listener-button.html';
-  const finding = (result) => {
-    const check = result.checksResults.find((r) => r.ruleId === 'click-handler-keyboard-operable');
-    return check ? [check.outcome, check.occurrences.map((o) => o.data.details.reasonCode)] : undefined;
+describe('@surea11y/core 1.14: steps for questions, the listener and live-region hooks', () => {
+  const outcomeOf = (result, ruleId) => {
+    const check = result.checksResults.find((r) => r.ruleId === ruleId);
+    return check ? check.outcome : undefined;
   };
+  const QUESTION = 'cypress/fixtures/question.html';
+  const SCRIPTED_BUTTON = 'cypress/fixtures/scripted-button.html';
+  const LIVE_REGION = 'cypress/fixtures/live-region.html';
 
-  (HAS_LISTENER_NOTE && HAS_LISTENER_HOOK ? it : it.skip)('without it, a click listener added from script is not seen, and the Command Log says how to see them', () => {
+  it('a question says how to answer it, through the plugin, and formatFailures() lists it after the failures', () => {
+    cy.visit(QUESTION);
+    new A11yCoreBuilder().withRules(['heading-order', 'img-alt-present']).elementRef(true).analyze().then((results) => {
+      const [question] = results.checksResults.find((r) => r.ruleId === 'heading-order').occurrences;
+      expect(question.lean.toward).to.equal('fail');
+      expect(question.howToCheck.steps, 'the steps the in-page engine leaves out are added').not.to.be.empty;
+      expect(question.howToCheck.passWhen).to.be.a('string');
+      // The occurrence keeps its live element: only a copy went to Node.
+      expect(question.element.tagName).to.equal('H3');
+      const text = formatFailures(results, { howToCheck: true });
+      expect(text).to.match(/^1\) img-alt-present \(serious\): /);
+      expect(text).to.match(/\n2\) heading-order \(minor, likely fails\): /);
+      expect(text).to.match(/\n {3}How to check:\n {5}1\. /);
+      // core's leaningFailures() reads the result in the spec too.
+      expect(leaningFailures(results).map((f) => f.ruleId)).to.deep.equal(['heading-order']);
+      expect(leaningFailures(results, { wcagOnly: true })).to.deep.equal([]);
+    });
+  });
+
+  it('with frames(true) and reportOnly(), each frame\'s questions get their steps', () => {
+    cy.visit('cypress/fixtures/frame-parent-same-origin.html');
+    new A11yCoreBuilder().frames(true).reportOnly(['fail', 'cantTell']).analyze().then((results) => {
+      expect(results.frames).to.have.length(1);
+      for (const frame of [results.topFrame, results.frames[0]]) {
+        const questions = frame.checksResults.flatMap((c) => c.occurrences.filter((o) => occurrenceOutcome(c, o) === 'cantTell'));
+        const answered = questions.filter((o) => o.howToCheck);
+        expect(answered, `${frame.url}: questions with their steps`).not.to.be.empty;
+        for (const occ of answered) expect(occ.howToCheck.steps).not.to.be.empty;
+      }
+    });
+  });
+
+  it('without the plugin\'s config, analyze() gives the result without steps and no error', () => {
+    const name = typeof Cypress.expose === 'function' ? 'expose' : 'env';
+    cy.stub(Cypress, name).callThrough().withArgs('surea11yPlugin').returns(undefined);
     cy.spy(Cypress, 'log').log(false).as('log');
-    cy.visit(FIXTURE);
+    cy.visit(QUESTION);
+    new A11yCoreBuilder().withRules('heading-order').analyze().then((results) => {
+      const [question] = results.checksResults[0].occurrences;
+      expect(question.lean.toward).to.equal('fail');
+      expect(question.howToCheck).to.equal(undefined);
+    });
+  });
+
+  it('without the listener hook, a button given its click listener from script is not judged, and the Command Log says how to have it judged', () => {
+    cy.spy(Cypress, 'log').log(false).as('log');
+    cy.visit(SCRIPTED_BUTTON);
     new A11yCoreBuilder().include('#scripted').withRules('click-handler-keyboard-operable').analyze().then((results) => {
       expect(results.engine.environment.listenerHook).to.equal(undefined);
-      expect(finding(results)[0]).to.equal('notApplicable');
+      expect(outcomeOf(results, 'click-handler-keyboard-operable')).not.to.equal('fail');
     });
-    new A11yCoreBuilder().include('#inline').withRules('click-handler-keyboard-operable').analyze();
+    new A11yCoreBuilder().include('#inline').withRules('click-handler-keyboard-operable').analyze().then((results) => {
+      expect(outcomeOf(results, 'click-handler-keyboard-operable')).to.equal('cantTell');
+      expect(getScanNotes(results).map((n) => n.kind)).to.include('listener-hook');
+    });
     cy.get('@log').should((log) => {
       const notes = log.getCalls().filter((c) => c.args[0] && c.args[0].name === 'surea11y scan note');
       expect(notes).to.have.length(1);
-      expect(notes[0].args[0].message).to.match(/1 element was asked about because the scan could not see .*installListenerHook\(\)/);
+      expect(notes[0].args[0].consoleProps().kind).to.equal('listener-hook');
+      expect(notes[0].args[0].message).to.match(/^1 finding \(click-handler-keyboard-operable\) was judged .*installListenerHook\(\)/);
     });
   });
 
-  (HAS_LISTENER_HOOK ? it : it.skip)('installListenerHook as onBeforeLoad sees them: the button with no key listener fails, the one with its own passes', () => {
-    cy.visit(FIXTURE, {
-      onBeforeLoad(win) {
-        installListenerHook(win);
-        installInternalsHook(win);
-      }
-    });
+  it('installListenerHook as onBeforeLoad: the button given its click listener from script fails', () => {
+    cy.visit(SCRIPTED_BUTTON, { onBeforeLoad: installListenerHook });
     new A11yCoreBuilder().include('#scripted').withRules('click-handler-keyboard-operable').analyze().then((results) => {
       expect(results.engine.environment.listenerHook).to.equal('early');
-      expect(results.engine.environment.internalsHook).to.equal('early');
-      expect(finding(results)).to.deep.equal(['fail', ['CLICK_HANDLER_NO_KEY_LISTENER']]);
-    });
-    new A11yCoreBuilder().include('#keyed').withRules('click-handler-keyboard-operable').analyze().then((results) => {
-      expect(finding(results)).to.deep.equal(['pass', []]);
+      expect(outcomeOf(results, 'click-handler-keyboard-operable')).to.equal('fail');
+      expect(results.checksResults[0].occurrences[0].data.details.reasonCode).to.equal('CLICK_HANDLER_NO_KEY_LISTENER');
     });
   });
 
-  it('installListenerHook() throws a TypeError for anything but a window', () => {
-    for (const bad of [null, {}, 'window']) {
-      // Checked by name: Chai's TypeError is another window's.
-      let thrown;
-      try { installListenerHook(bad); } catch (e) { thrown = e; }
-      expect(thrown && thrown.name).to.equal('TypeError');
-      expect(thrown.message).to.match(/^installListenerHook\(\): expected the app's window/);
+  it('A11yCoreBuilder.announcements() is null without the live-region hook', () => {
+    cy.visit(LIVE_REGION);
+    A11yCoreBuilder.announcements().then((said) => {
+      expect(said).to.equal(null);
+    });
+  });
+
+  it('installLiveRegionHook as onBeforeLoad: announcements() returns what the region was given, with its selector', () => {
+    cy.visit(LIVE_REGION, { onBeforeLoad: installLiveRegionHook });
+    cy.get('#save').click();
+    A11yCoreBuilder.announcements().then((said) => {
+      expect(said.map((a) => [a.text, a.politeness, a.selector, a.behindModal])).to.deep.equal([['Saved', 'polite', '#status', false]]);
+    });
+    A11yCoreBuilder.announcements({ includeBehindModal: true }).then((said) => {
+      expect(said.map((a) => a.text)).to.deep.equal(['Saved']);
+    });
+    new A11yCoreBuilder().withRules('img-alt-present').analyze().then((results) => {
+      expect(results.engine.environment.liveRegionHook).to.equal('early');
+    });
+  });
+
+  it('announcements() fails the test for an option it does not know', (done) => {
+    cy.visit(LIVE_REGION, { onBeforeLoad: installLiveRegionHook });
+    cy.on('fail', (err) => {
+      expect(err.message).to.include('no option named "selectors"');
+      done();
+      return false;
+    });
+    A11yCoreBuilder.announcements({ selectors: false });
+  });
+
+  it('the hook installers throw a TypeError for anything but a window, and are on the builder too', () => {
+    for (const [name, install] of [['installListenerHook', installListenerHook], ['installLiveRegionHook', installLiveRegionHook]]) {
+      for (const bad of [null, {}, 'window']) {
+        let thrown;
+        try { install(bad); } catch (e) { thrown = e; }
+        expect(thrown && thrown.name).to.equal('TypeError');
+        expect(thrown.message).to.match(new RegExp(`^${name}\\(\\): expected the app's window`));
+      }
+      expect(A11yCoreBuilder[name]).to.be.a('function');
     }
-    expect(A11yCoreBuilder.installListenerHook).to.be.a('function');
+  });
+
+  it('getScanNotes() has the listener note in a spec, from core\'s HOOK_REASON_CODES in the bundle', () => {
+    // A result as a scan without the listener hook writes one: a question
+    // the hook would have decided.
+    const result = {
+      checksResults: [{
+        ruleId: 'click-handler-keyboard-operable',
+        outcome: 'cantTell',
+        occurrences: [{ selector: 'div', data: { details: { reasonCode: 'CLICK_HANDLER_NO_KEY_HANDLER' } } }]
+      }],
+      engine: { environment: {} }
+    };
+    const notes = getScanNotes(result).filter((n) => n.kind === 'listener-hook');
+    expect(notes.map((n) => [n.hook, n.findingCount, n.rules])).to.deep.equal([['none', 1, ['click-handler-keyboard-operable']]]);
+    expect(getScanNotes(result, { hookReasonCodes: {} }).filter((n) => n.kind === 'listener-hook')).to.have.length(0);
   });
 });

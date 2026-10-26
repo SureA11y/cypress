@@ -1070,7 +1070,7 @@ describe('@surea11y/core 1.14: steps for questions, the listener and live-region
     }
   });
 
-  it('getScanNotes() has the listener note in a spec, from core\'s HOOK_REASON_CODES in the bundle', () => {
+  it('getScanNotes() and formatFailures() have the listener note in a spec, from core\'s HOOK_REASON_CODES in the bundle', () => {
     // A result as a scan without the listener hook writes one: a question
     // the hook would have decided.
     const result = {
@@ -1084,5 +1084,8 @@ describe('@surea11y/core 1.14: steps for questions, the listener and live-region
     const notes = getScanNotes(result).filter((n) => n.kind === 'listener-hook');
     expect(notes.map((n) => [n.hook, n.findingCount, n.rules])).to.deep.equal([['none', 1, ['click-handler-keyboard-operable']]]);
     expect(getScanNotes(result, { hookReasonCodes: {} }).filter((n) => n.kind === 'listener-hook')).to.have.length(0);
+    // formatFailures() prints it too, from the same codes.
+    expect(formatFailures(result)).to.match(/was judged without seeing the listeners .*installListenerHook\(\)/);
+    expect(formatFailures(result, { hookReasonCodes: {} })).not.to.include('installListenerHook');
   });
 });

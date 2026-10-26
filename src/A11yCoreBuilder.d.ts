@@ -283,7 +283,9 @@ export class A11yCoreBuilder {
  * failures, then the questions that likely fail, likely pass, and those
  * only a person can answer. `outcomes` takes those groups too
  * ('leanFail', 'leanPass', 'open'), and `howToCheck: true` lists each
- * question's steps. Meant for an assertion library's
+ * question's steps. Its notes include the listener and live-region notes,
+ * from core's HOOK_REASON_CODES in this bundle; `hookReasonCodes` replaces
+ * them. Meant for an assertion library's
  * failure-message parameter, e.g.
  * `expect(results.checksResults.length, formatFailures(results)).to.equal(0)`.
  * Given the whole result, it also lists what the scan left out (a scope
@@ -294,7 +296,7 @@ export class A11yCoreBuilder {
  */
 export function formatFailures(
   input: A11yCoreResult | ScanResultLike | ReadonlyArray<CheckResult>,
-  opts?: { outcomes?: Array<Outcome | ReviewGroup>; howToCheck?: boolean; failOnSeverity?: Severity }
+  opts?: { outcomes?: Array<Outcome | ReviewGroup>; howToCheck?: boolean; failOnSeverity?: Severity; hookReasonCodes?: HookReasonCodes | null }
 ): string;
 
 /** The four severities, least to most severe (@surea11y/binding-base 1.6.0 and later). */
@@ -311,7 +313,6 @@ export function getGatingFailures(
   input: A11yCoreResult | ReadonlyArray<CheckResult>,
   opts?: { failOnSeverity?: Severity }
 ): CheckResult[];
-
 
 /**
  * What one scan result says it left out, which its checksResults alone

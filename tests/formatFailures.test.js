@@ -139,3 +139,18 @@ test('formatFailures(): throws for the { topFrame, frames } of a frames(true) sc
 // A real end-to-end "scan then format" test lives in tests/builder.cy.js
 // instead of here -- it needs a real Cypress-driven browser, which node:test
 // alone can't provide.
+
+test('formatFailures(): says the listener-hook note, from core\'s HOOK_REASON_CODES, unless given other codes', () => {
+  // A question the listener hook would have decided, in a scan without it.
+  const result = {
+    checksResults: [{
+      ruleId: 'click-handler-keyboard-operable',
+      outcome: 'cantTell',
+      severity: 'serious',
+      occurrences: [{ selector: 'div', summary: 'S', data: { details: { reasonCode: 'CLICK_HANDLER_NO_KEY_HANDLER' } } }]
+    }],
+    engine: { environment: {} }
+  };
+  assert.match(formatFailures(result), /1 finding \(click-handler-keyboard-operable\) was judged .*installListenerHook\(\)/);
+  assert.doesNotMatch(formatFailures(result, { hookReasonCodes: {} }), /installListenerHook/);
+});

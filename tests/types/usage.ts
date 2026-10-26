@@ -69,7 +69,7 @@ A11yCoreBuilder.announcements({ includeBehindModal: true }).then((said: LocatedA
   void regions;
 });
 const group: ReviewGroup = 'leanFail';
-const review: string = formatFailures(result, { outcomes: ['fail', group, 'open'], howToCheck: true });
+const review: string = formatFailures(result, { outcomes: ['fail', group, 'open'], howToCheck: true, hookReasonCodes: null });
 for (const note of getScanNotes(result, { hookReasonCodes: null })) {
   if (note.kind === 'listener-hook' || note.kind === 'live-region-hook') note.rules.join(', ');
 }

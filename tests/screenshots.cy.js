@@ -6,11 +6,13 @@
 
 const { A11yCoreBuilder, formatFailures } = require('../src/index.js');
 
-// The colour each flagged image is, by where core says it is.
+// The colour each flagged image is, by where core says it is. Since core
+// 1.14 the image at the top of x-card's shadow root keeps its first step to
+// the root's own children, `:not(* > *)`.
 const COLOURS = {
   '#top': [255, 165, 0],
   '#inner': [0, 128, 0],
-  'html > body > main > x-card >>> img': [128, 0, 128],
+  'html > body > main > x-card >>> img:not(* > *)': [128, 0, 128],
   '#framed': [0, 128, 128]
 };
 
@@ -87,7 +89,7 @@ describe('A11yCoreBuilder.screenshots()', () => {
             expect([...found.keys()], 'findings').to.include(name);
             return found.get(name);
           };
-          for (const name of ['#top', '#inner', 'html > body > main > x-card >>> img']) {
+          for (const name of ['#top', '#inner', 'html > body > main > x-card >>> img:not(* > *)']) {
             const shot = get(name).screenshot;
             expect(shot.path, name).to.match(/surea11y[\\/]element-[0-9a-f]{8}\.png$/);
             expectColour(shot, name);

@@ -3,21 +3,15 @@
 // A style sheet from another origin, which the page can't read: the
 // binding fetches it in the page, where its server shares it (CORS), and
 // core reads it, so css-orientation-lock finds the lock in it instead of
-// asking. Needs @surea11y/binding-base 1.6.0 and @surea11y/core 1.14.0;
-// skipped with older ones.
+// asking.
 
 const { A11yCoreBuilder } = require('../src/index.js');
-const core = require('@surea11y/core');
 
 const LOCK = '@media (orientation: portrait) { body { transform: rotate(90deg); } }';
-const supported =
-  typeof core.preloadStyleSheets === 'function' &&
-  typeof A11yCoreBuilder.prototype.fetchStyleSheets === 'function';
 const lock = (results) => results.checksResults.find((c) => c.ruleId === 'css-orientation-lock');
 
 describe('style sheets from another origin', () => {
-  beforeEach(function () {
-    if (!supported) this.skip();
+  beforeEach(() => {
     cy.intercept('https://cdn.other.test/site.css', {
       headers: { 'content-type': 'text/css', 'access-control-allow-origin': '*' },
       body: LOCK

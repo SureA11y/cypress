@@ -29,9 +29,41 @@ test('plugin: the planned task lists the rules and criteria a selection gives, w
   assert.deepStrictEqual(criteria.map((r) => r.id), ['wcag-1.4.3-contrast-minimum']);
 });
 
-test('plugin: registers both tasks under their names', () => {
+test('plugin: registers its tasks under their names', () => {
   const registered = tasks();
-  assert.deepStrictEqual(Object.keys(registered).sort(), ['surea11y:packScript', 'surea11y:planned']);
+  assert.deepStrictEqual(Object.keys(registered).sort(), ['surea11y:howToCheck', 'surea11y:packScript', 'surea11y:planned']);
   assert.strictEqual(surea11yPlugin.TASK, 'surea11y:packScript');
   assert.strictEqual(surea11yPlugin.PLANNED_TASK, 'surea11y:planned');
+  assert.strictEqual(surea11yPlugin.HOW_TO_CHECK_TASK, 'surea11y:howToCheck');
+});
+
+test('plugin: returns the config with its key, in expose where Cypress has it and in env before', () => {
+  const on = () => {};
+  const withExpose = { projectRoot: '.', env: {}, expose: { mine: 1 } };
+  assert.strictEqual(surea11yPlugin(on, withExpose), withExpose);
+  assert.deepStrictEqual(withExpose.expose, { mine: 1, surea11yPlugin: true });
+  assert.deepStrictEqual(withExpose.env, {});
+
+  const older = { projectRoot: '.', env: { mine: 1 } };
+  assert.strictEqual(surea11yPlugin(on, older), older);
+  assert.deepStrictEqual(older.env, { mine: 1, surea11yPlugin: true });
+  assert.strictEqual(surea11yPlugin.PLUGIN_KEY, 'surea11yPlugin');
+});
+
+test('plugin: the steps task gives each question its howToCheck, and leaves the rest as sent', () => {
+  const howToCheck = tasks()[surea11yPlugin.HOW_TO_CHECK_TASK];
+  const question = {
+    ruleId: 'heading-order',
+    outcome: 'cantTell',
+    i18n: { titleKey: 'headingOrder_title' },
+    occurrences: [{ selector: 'h3', data: { details: { reasonCode: 'HEADING_ORDER_SKIPPED_LEVEL' } } }]
+  };
+  const sent = [{ engine: { locale: { requested: 'en', resolved: 'en' } }, checksResults: [question] }];
+  const [answered] = howToCheck({ results: sent, packs: [] });
+  const how = answered.checksResults[0].occurrences[0].howToCheck;
+  assert.ok(Array.isArray(how.steps) && how.steps.length, JSON.stringify(answered));
+  assert.strictEqual(typeof how.passWhen, 'string');
+  assert.strictEqual(typeof how.failWhen, 'string');
+  assert.strictEqual(sent[0].checksResults[0].occurrences[0].howToCheck, undefined, 'what was sent is not changed');
+  assert.deepStrictEqual(howToCheck({ results: [], packs: [] }), []);
 });

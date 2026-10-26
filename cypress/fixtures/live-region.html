@@ -1,18 +1,21 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Live regions</title></head>
+<head>
+  <title>live region fixture</title>
+</head>
 <body>
   <main>
-    <h1>Live regions</h1>
-    <div id="status" role="status"></div>
-    <div id="toasts"></div>
+    <h1>Settings</h1>
     <button id="save" type="button">Save</button>
+    <div id="status" aria-live="polite"></div>
     <button id="copy" type="button">Copy</button>
+    <div id="toasts"></div>
   </main>
   <script>
     document.getElementById('save').addEventListener('click', () => {
       document.getElementById('status').textContent = 'Saved';
     });
+    // A region added with its text already in it: often not announced.
     document.getElementById('copy').addEventListener('click', () => {
       document.getElementById('toasts').innerHTML = '<div role="status">Copied</div>';
     });

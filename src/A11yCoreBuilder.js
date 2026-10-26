@@ -1,18 +1,21 @@
 'use strict';
 
-const {
-  runa11yCoreInPage,
-  internalsHookScript,
-  listenerHookScript,
-  liveRegionHookScript,
-  getAnnouncements: readAnnouncements,
-  preloadStyleSheets
-} = require('@surea11y/core');
+const core = require('@surea11y/core');
+// The browser-safe part of core's steps for questions: which findings each
+// hook decides (for the scan notes) and an occurrence's own outcome. The
+// steps themselves are read in Node, by the plugin.
+const { HOOK_REASON_CODES, occurrenceOutcome } = require('@surea11y/core/how-to-check');
+
+const { runa11yCoreInPage, preloadStyleSheets, getAnnouncements } = core;
 // The tasks @surea11y/cypress/plugin (src/plugin.js) registers: one prepares
-// packs in Node, one lists what a scan will check. Named here, not imported:
-// this file runs in the browser.
+// packs in Node, one lists what a scan will check, one adds the steps that
+// answer each question. Named here, not imported: this file runs in the
+// browser. PLUGIN_KEY is what the plugin sets in the config it returns, so
+// the spec knows the steps' task is there.
 const TASK = 'surea11y:packScript';
 const PLANNED_TASK = 'surea11y:planned';
+const HOW_TO_CHECK_TASK = 'surea11y:howToCheck';
+const PLUGIN_KEY = 'surea11yPlugin';
 const {
   A11yCoreBuilderBase,
   getScanGaps,
@@ -32,11 +35,41 @@ const {
 // screenshots folder.
 const SCREENSHOTS_FOLDER = 'surea11y';
 
+// The notes of getScanNotes() the Command Log shows, each once per builder:
+// how the page was loaded, which a scan can't fix afterwards.
+const HOOK_NOTES = ['internals-hook', 'listener-hook', 'live-region-hook'];
+
 // binding-base's in-page screenshots step, run in a window of the app: the
 // spec reaches it directly, so it runs there from its source, as the scan
 // does (see _runInWindow()), with no serialization in between.
 function evaluateInFrame(win, fn, args) {
   return win.eval('(' + fn.toString() + ')')(...args);
+}
+
+// The hooks registered for every visit, by installer.
+const registeredHooks = new Set();
+
+// One of core's hook scripts (1.14.0 and later for the listener and
+// live-region hooks), in the app's window: in `win`, or, with no argument,
+// in the app's window on every visit from then on, through
+// `window:before:load`. Registering again does nothing.
+function installHook(method, scriptName, win) {
+  if (typeof core[scriptName] !== 'function') {
+    throw new Error(`${method}(): needs @surea11y/core 1.14.0 or later, which has ${scriptName}().`);
+  }
+  if (win !== undefined) {
+    if (!win || typeof win.eval !== 'function') {
+      throw new TypeError(`${method}(): expected the app's window (as onBeforeLoad gives it), or no argument to install it on every visit.`);
+    }
+    win.eval(core[scriptName]());
+    return;
+  }
+  if (typeof Cypress === 'undefined' || typeof Cypress.on !== 'function') {
+    throw new Error(`${method}(): call it from a Cypress support file or spec.`);
+  }
+  if (registeredHooks.has(method)) return;
+  registeredHooks.add(method);
+  Cypress.on('window:before:load', (appWindow) => appWindow.eval(core[scriptName]()));
 }
 
 /**
@@ -56,87 +89,53 @@ function evaluateInFrame(win, fn, args) {
  * @param {Window} [win]
  */
 function installInternalsHook(win) {
-  installBeforeLoad('installInternalsHook', win, () => internalsHookScript());
+  return installHook('installInternalsHook', 'internalsHookScript', win);
 }
 
 /**
- * Installs @surea11y/core's opt-in listener hook (core 1.14.0 and later), so
- * the keyboard rules see the click, key, focus and mouse listeners the app
- * adds from script (addEventListener, or an onclick-style property), not
- * only inline handler attributes. Called as installInternalsHook() is: with
- * no argument, in the support file, for every visit from then on; or with a
- * window, `cy.visit(url, { onBeforeLoad: installListenerHook })`. The two
- * can be installed together.
+ * Installs @surea11y/core's opt-in listener hook, so the keyboard rules see
+ * the event listeners the app adds from script (`addEventListener`,
+ * `el.onclick = fn`), which no page script can list. Without it a
+ * `<div role="button">` given a click listener from script goes unjudged.
+ * The same two forms as installInternalsHook(): no argument in the support
+ * file for every visit, or `cy.visit(url, { onBeforeLoad:
+ * installListenerHook })` for one. Needs @surea11y/core 1.14.0 or later.
  * @param {Window} [win]
  */
 function installListenerHook(win) {
-  installBeforeLoad('installListenerHook', win, () => {
-    if (typeof listenerHookScript !== 'function') {
-      throw new TypeError('installListenerHook() needs @surea11y/core 1.14.0 or later, which has listenerHookScript().');
-    }
-    return listenerHookScript();
-  });
+  return installHook('installListenerHook', 'listenerHookScript', win);
 }
 
 /**
- * Installs @surea11y/core's opt-in live-region hook (core 1.14.0 and later),
- * which records what the app's live regions are given from the load event
- * on: live-region-announcements then asks about a region added with its
- * text already in it, or shown and filled at once, and getAnnouncements()
- * reads what the app made available to announce. Called as
- * installInternalsHook() is: with no argument, in the support file, for
- * every visit from then on; or with a window,
- * `cy.visit(url, { onBeforeLoad: installLiveRegionHook })`.
+ * Installs @surea11y/core's opt-in live-region hook, which records what the
+ * app's live regions are given while it runs: the scan then asks about a
+ * region added with its text already in it, and
+ * A11yCoreBuilder.announcements() returns what the app made available to
+ * announce. The same two forms as installInternalsHook(). Needs
+ * @surea11y/core 1.14.0 or later.
  * @param {Window} [win]
  */
 function installLiveRegionHook(win) {
-  installBeforeLoad('installLiveRegionHook', win, () => {
-    if (typeof liveRegionHookScript !== 'function') {
-      throw new TypeError('installLiveRegionHook() needs @surea11y/core 1.14.0 or later, which has liveRegionHookScript().');
-    }
-    return liveRegionHookScript();
-  });
+  return installHook('installLiveRegionHook', 'liveRegionHookScript', win);
 }
 
-/**
- * Yields what the app's live regions were given while shown and reachable by
- * assistive technology, as the live-region hook recorded it:
- * [{ text, politeness, time }] in the order the app did it, or null when the
- * app's window has no hook. What the app made available to announce, not
- * what a screen reader said. A Cypress chainable, like analyze().
- */
-function getAnnouncements() {
-  if (typeof readAnnouncements !== 'function') {
-    throw new TypeError('getAnnouncements() needs @surea11y/core 1.14.0 or later, which has getAnnouncements().');
+// Whether @surea11y/cypress/plugin's config reached the spec: the plugin
+// sets PLUGIN_KEY in the config setupNodeEvents returns, in `expose` where
+// Cypress has it and in `env` before. A spec can't ask whether a task is
+// registered, and a task that isn't fails the test.
+function pluginRegistered() {
+  try {
+    if (typeof Cypress.expose === 'function') return !!Cypress.expose(PLUGIN_KEY);
+    return !!Cypress.env(PLUGIN_KEY);
+  } catch {
+    return false;
   }
-  return cy.window({ log: false }).then((win) => {
-    const list = readAnnouncements(win);
-    return list ? list.map((a) => ({ text: a.text, politeness: a.politeness, time: a.time })) : null;
-  });
 }
 
-// The window:before:load handlers registered so far, one per hook.
-const registeredHooks = new Set();
-
-// Runs `getSource()`'s script with the app window's eval: in `win`, for one
-// visit, or, with no window, in every app window from now on, before the
-// app's scripts. `name` names the function in errors, and registers each
-// hook once.
-function installBeforeLoad(name, win, getSource) {
-  if (win !== undefined) {
-    if (!win || typeof win.eval !== 'function') {
-      throw new TypeError(`${name}(): expected the app's window (as onBeforeLoad gives it), or no argument to install it on every visit.`);
-    }
-    win.eval(getSource());
-    return;
-  }
-  if (typeof Cypress === 'undefined' || typeof Cypress.on !== 'function') {
-    throw new Error(`${name}(): call it from a Cypress support file or spec.`);
-  }
-  if (registeredHooks.has(name)) return;
-  const source = getSource();
-  registeredHooks.add(name);
-  Cypress.on('window:before:load', (appWindow) => appWindow.eval(source));
+// A copy of `value` a task can take as its argument: JSON, without the
+// elements .elementRef(true) put on the occurrences.
+function forTask(value) {
+  return JSON.parse(JSON.stringify(value, (key, v) => (v && typeof v === 'object' && typeof v.nodeType === 'number' ? undefined : v)));
 }
 
 /**
@@ -251,6 +250,11 @@ function installBeforeLoad(name, win, getSource) {
  * under its screenshots folder (in `surea11y/`, or in `dir` when given), or
  * `{ skipped }` saying why there is none. See `_captureScreenshots()`.
  *
+ * Each question in the result (an occurrence whose own outcome is
+ * cantTell) gets `howToCheck`, the steps that answer it, from
+ * @surea11y/cypress/plugin in Node, when the plugin's config reached the
+ * spec. See `_addStepsInNode()`.
+ *
  * Register your own rule(s) for just this scan with `.withCustomRules()`
  * (surea11y's `engineOptions.customRules` escape hatch -- see surea11y's
  * docs/ENGINE_OPTIONS.md).
@@ -273,19 +277,33 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
     return installInternalsHook(win);
   }
 
-  /** The same as the exported installListenerHook(), as every binding's builder has it. */
+  /** The same as the exported installListenerHook(). */
   static installListenerHook(win) {
     return installListenerHook(win);
   }
 
-  /** The same as the exported installLiveRegionHook(), as every binding's builder has it. */
+  /** The same as the exported installLiveRegionHook(). */
   static installLiveRegionHook(win) {
     return installLiveRegionHook(win);
   }
 
-  /** The same as the exported getAnnouncements(), as every binding's builder has it. */
-  static getAnnouncements() {
-    return getAnnouncements();
+  /**
+   * What the app's live regions were given since it loaded, as the
+   * live-region hook recorded it, in order: `[{ text, politeness, time,
+   * order, behindModal, selector }]`, each region named by its selector (and
+   * `shadowHostSelectors` inside a shadow root; null for a region that has
+   * since left the page). null where installLiveRegionHook() didn't run
+   * before the app loaded. What the app made available to announce, not
+   * what a screen reader said. A text given to a region behind an open
+   * modal dialog, which assistive technology did not get, is listed only
+   * with `{ includeBehindModal: true }`, marked `behindModal`. Reads the
+   * app's window, as cy.window() gives it, and returns a chainable, as
+   * analyze() does. Needs @surea11y/core 1.14.0 or later.
+   * @param {{ includeBehindModal?: boolean }} [options]
+   * @returns {Cypress.Chainable<Array<object>|null>}
+   */
+  static announcements(options) {
+    return cy.window({ log: false }).then((win) => new A11yCoreBuilder()._announcementsIn(win, options));
   }
 
   /**
@@ -313,6 +331,25 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    */
   _normalizeCustomRule(rule) {
     return { ...rule };
+  }
+
+  /**
+   * Core's HOOK_REASON_CODES, from @surea11y/core/how-to-check, for the
+   * listener and live-region notes: binding-base can't load core in a
+   * spec's bundle.
+   */
+  _hookReasonCodes() {
+    return HOOK_REASON_CODES;
+  }
+
+  /** What _announcementsIn() runs in the app's window: core's own, from this bundle. */
+  _coreGetAnnouncements() {
+    return typeof getAnnouncements === 'function' ? getAnnouncements : null;
+  }
+
+  /** binding-base's way into a window, for _announcementsIn(): `fn` from its source, in `win`'s realm. */
+  _evaluateInFrame(win, fn, args) {
+    return Promise.resolve(evaluateInFrame(win, fn, args));
   }
 
   /**
@@ -551,7 +588,8 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
           this._logScanGaps(result);
           return result;
         });
-        return this._scanFrames ? { topFrame: results[0], frames: results.slice(1) } : results[0];
+        const out = this._scanFrames ? { topFrame: results[0], frames: results.slice(1) } : results[0];
+        return this._addStepsInNode(results.filter((r, i) => scans[i].win), out);
       };
       if (!this._screenshots) return finish();
 
@@ -563,6 +601,60 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
       }
       return chain.then(finish);
     });
+  }
+
+  /**
+   * Gives each question (an occurrence whose own outcome is cantTell) the
+   * steps a person takes to answer it, `howToCheck`, from core's
+   * addHowToCheck() in Node, through @surea11y/cypress/plugin: a spec runs
+   * in the browser, where binding-base's _applyReportOnly() can't load core
+   * to add them. The packs given to withPacks() add their rules' steps. One
+   * task for every frame of the scan, sent only the rules that have a
+   * question, without the `element`s of .elementRef(true); the steps are put
+   * on the result's own occurrences, which keep their elements.
+   *
+   * Only when the plugin is there: its config reached the spec (it returns
+   * one from setupNodeEvents), or withPacks() just used its task. Without
+   * it, or with nothing to ask about, `out` comes back as it is, with no
+   * task, as before.
+   * @param {object[]} results the scanned frames' results, changed in place
+   * @param {*} out what analyze() resolves to
+   */
+  _addStepsInNode(results, out) {
+    if (!this._preparedPacks && !pluginRegistered()) return out;
+    const asked = [];
+    const sent = [];
+    for (const result of results) {
+      if (!result || !Array.isArray(result.checksResults)) continue;
+      const checks = result.checksResults.filter((check) =>
+        check && Array.isArray(check.occurrences) &&
+        check.occurrences.some((occ) => occ && !occ.howToCheck && occurrenceOutcome(check, occ) === 'cantTell'));
+      if (!checks.length) continue;
+      asked.push(checks);
+      sent.push(forTask({
+        engine: result.engine && { locale: result.engine.locale },
+        overriddenBuiltinIds: result.overriddenBuiltinIds,
+        checksResults: checks
+      }));
+    }
+    if (!sent.length) return out;
+    return cy
+      .task(HOW_TO_CHECK_TASK, { results: sent, packs: this._packSpecs || [] }, { log: false })
+      .then((answered) => {
+        asked.forEach((checks, i) => {
+          const back = answered && answered[i] && answered[i].checksResults;
+          if (!Array.isArray(back)) return;
+          checks.forEach((check, j) => {
+            const occurrences = back[j] && back[j].occurrences;
+            if (!Array.isArray(occurrences)) return;
+            check.occurrences.forEach((occ, k) => {
+              const how = occurrences[k] && occurrences[k].howToCheck;
+              if (occ && how && !occ.howToCheck) occ.howToCheck = how;
+            });
+          });
+        });
+        return out;
+      });
   }
 
   /**
@@ -749,7 +841,9 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * @surea11y/core 1.10.0), part of a multi-selector scope that matched
    * nothing, a custom rule the engine did not run, or a pack the page did
    * not run. Without it such a scan logs nothing, and reads in the Command
-   * Log like a clean one.
+   * Log like a clean one. Then a `'surea11y scan note'` entry for each hook
+   * note of getScanNotes() (`internals-hook`, `listener-hook`,
+   * `live-region-hook`), each once per builder.
    *
    * Like _logFindings(), purely additive: it never changes the result or
    * throws.
@@ -764,12 +858,14 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         message: gap.message,
       });
     }
-    // The internals-hook and listener-hook notes, each once per builder:
-    // elements one of the hooks would have let the engine judge.
-    const said = this._saidHookNotes || (this._saidHookNotes = new Set());
-    for (const note of getScanNotes(result)) {
-      if ((note.kind !== 'internals-hook' && note.kind !== 'listener-hook') || said.has(note.kind)) continue;
-      said.add(note.kind);
+    // Each hook note, once per builder: custom elements the internals hook
+    // would have let the engine read, and findings the listener or
+    // live-region hook would have decided (core's HOOK_REASON_CODES, see
+    // _hookReasonCodes()).
+    const notes = getScanNotes(result, { hookReasonCodes: this._hookReasonCodes() })
+      .filter((n) => HOOK_NOTES.includes(n.kind) && !this._saidNotes.has(n.kind));
+    for (const note of notes) {
+      this._saidNotes.add(note.kind);
       Cypress.log({
         name: 'surea11y scan note',
         consoleProps: () => note,
@@ -888,10 +984,4 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   }
 }
 
-module.exports = {
-  A11yCoreBuilder,
-  installInternalsHook,
-  installListenerHook,
-  installLiveRegionHook,
-  getAnnouncements
-};
+module.exports = { A11yCoreBuilder, installInternalsHook, installListenerHook, installLiveRegionHook };

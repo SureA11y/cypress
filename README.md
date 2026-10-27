@@ -583,7 +583,7 @@ The plugin loads a pack with Node's `require`, from the project root, and keeps 
 
 ### Style sheets from another origin
 
-A page's script can't read the rules of a style sheet served from another origin (a CDN, a fonts service), so a check that reads the CSS, such as `css-orientation-lock`, can't tell whether it holds an orientation lock and asks about it. With `@surea11y/core` 1.14.0 or later, `analyze()` first fetches, in the page, every such sheet whose server shares it (CORS), as axe does, and gives core its text, which it then checks. A spec runs in the browser, so a sheet whose server doesn't share it stays unread, and the check asks as before (the other bindings fetch those from Node). It's on by default; each request is given up after five seconds. To send no request but the page's own:
+A page's script can't read the rules of a style sheet served from another origin (a CDN, a fonts service), so a check that reads the CSS, such as `css-orientation-lock`, can't tell whether it holds an orientation lock and asks about it. With `@surea11y/core` 1.14.0 or later, `analyze()` first fetches, in the page, every such sheet whose server shares it (CORS), and gives core its text, which it then checks. A spec runs in the browser, so a sheet whose server doesn't share it stays unread, and the check asks as before (the other bindings fetch those from Node). It's on by default; each request is given up after five seconds. To send no request but the page's own:
 
 ```js
 new A11yCoreBuilder().fetchStyleSheets(false).analyze();

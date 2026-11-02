@@ -58,6 +58,14 @@ export interface Occurrence extends Core.Occurrence {
    * The occurrences about the same element share one object.
    */
   screenshot?: CypressScreenshot;
+  /**
+   * Only present beside `screenshot` when this occurrence was found in a
+   * state the rule put the page in (core's `data.details.evidenceState`,
+   * the WCAG text spacing): the element pictured with the page in that
+   * state, where the finding shows, or why there is none. Needs
+   * @surea11y/core 1.15.0 and @surea11y/binding-base 1.7.0.
+   */
+  stateScreenshots?: CypressStateScreenshot[];
 }
 
 /** What `.screenshots()` asks for in Cypress: no buffer form, since a spec runs in the browser. */
@@ -70,8 +78,10 @@ export interface CypressScreenshotOptions {
   padding?: number;
   /** Draw a box around the element, over the page. Default true. */
   highlight?: boolean;
-  /** At most this many pictures per scan, frames included. Default 50. */
+  /** At most this many pictures per scan, frames included. An element's picture in a state comes with its picture and doesn't count apart. Default 50. */
   max?: number;
+  /** Also picture a finding made in a state the rule put the page in, such as the WCAG text spacing, in that state, on `stateScreenshots`. Default true. */
+  states?: boolean;
 }
 
 /**
@@ -82,6 +92,9 @@ export interface CypressScreenshotOptions {
 export type CypressScreenshot =
   | { path: string; box: ScreenshotBox; cropped?: true }
   | { skipped: ScreenshotSkip; error?: string };
+
+/** An occurrence's picture in the state it was found in, such as `text-spacing`, shaped as `CypressScreenshot`. */
+export type CypressStateScreenshot = { state: string } & CypressScreenshot;
 
 export interface CheckResult extends Omit<Core.CheckResult, 'occurrences'> {
   occurrences: Occurrence[];

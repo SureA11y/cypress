@@ -161,3 +161,69 @@ describe('A11yCoreBuilder.screenshots()', () => {
       .and.to.include({ name: 'TypeError', code: 'INVALID_ENGINE_OPTIONS' });
   });
 });
+
+// A finding made with the WCAG text spacing applied gets a second picture
+// with the page in that spacing (binding-base 1.7.0 and core 1.15.0).
+// Skipped with older ones, which take no such picture.
+const { evidenceState } = require('@surea11y/core');
+const { stateScreenshotFileName } = require('@surea11y/binding-base');
+const takesStatePictures = typeof evidenceState === 'function' && typeof stateScreenshotFileName === 'function';
+
+describe('A11yCoreBuilder.screenshots(): a finding made with the text spacing applied', () => {
+  beforeEach(function () {
+    if (!takesStatePictures) this.skip();
+    cy.viewport(800, 600);
+    cy.visit('cypress/fixtures/text-spacing.html');
+  });
+
+  const clipped = (results) => results.checksResults[0].occurrences.find((o) => o.data.details.reasonCode === 'TEXT_CLIPPED');
+
+  it('pictures it as the page shows it and with the spacing applied, and leaves the page as it was', () => {
+    new A11yCoreBuilder()
+      .withRules('text-spacing-content-loss')
+      .screenshots({ padding: 8 })
+      .analyze()
+      .then((results) => {
+        const occurrence = clipped(results);
+        expect(occurrence.data.details.evidenceState).to.equal('text-spacing');
+        expect(occurrence.screenshot.path).to.match(/surea11y[\\/]element-[0-9a-f]{8}\.png$/);
+        expect(occurrence.stateScreenshots).to.have.length(1);
+        const [inState] = occurrence.stateScreenshots;
+        expect(inState.state).to.equal('text-spacing');
+        expect(inState.path).to.match(/surea11y[\\/]element-[0-9a-f]{8}--text-spacing\.png$/);
+        expect(inState.path.replace('--text-spacing', ''), 'beside the first picture').to.equal(occurrence.screenshot.path);
+        expect(inState.box).to.have.all.keys('x', 'y', 'width', 'height');
+        // The spacing changes what the picture shows.
+        cy.readFile(occurrence.screenshot.path, 'base64').then((plain) => {
+          cy.readFile(inState.path, 'base64').then((spaced) => expect(spaced, 'the two pictures differ').to.not.equal(plain));
+        });
+        expect(formatFailures(results)).to.include(`   screenshot (text-spacing): ${inState.path}`);
+        cy.window({ log: false }).then((win) => {
+          expect(win.document.querySelectorAll('style[data-surea11y]'), 'the spacing is taken off').to.have.length(0);
+          expect(win.getComputedStyle(win.document.getElementById('badge')).letterSpacing).to.equal('normal');
+          expect(win.document.querySelectorAll('surea11y-highlight'), 'the box is removed').to.have.length(0);
+        });
+      });
+  });
+
+  it('states: false takes only the picture of the page as it is; the pair counts once against max', () => {
+    new A11yCoreBuilder()
+      .withRules('text-spacing-content-loss')
+      .screenshots({ states: false })
+      .analyze()
+      .then((results) => {
+        const occurrence = clipped(results);
+        expect(occurrence.screenshot).to.have.property('path');
+        expect(occurrence).to.not.have.property('stateScreenshots');
+      });
+    new A11yCoreBuilder()
+      .withRules('text-spacing-content-loss')
+      .screenshots({ max: 1 })
+      .analyze()
+      .then((results) => {
+        const occurrence = clipped(results);
+        expect(occurrence.screenshot).to.have.property('path');
+        expect(occurrence.stateScreenshots[0]).to.have.property('path');
+      });
+  });
+});

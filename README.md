@@ -288,7 +288,8 @@ new A11yCoreBuilder()
 | `outcomes` | `['fail']` | Which occurrences to picture. For contrast, `['fail', 'cantTell']` shows the background the engine couldn't judge. |
 | `padding` | `0` | CSS pixels of context around the element. |
 | `highlight` | `true` | Draw a box around the element, over the page; the element itself is never restyled. |
-| `max` | `50` | At most this many pictures per scan, frames included. |
+| `max` | `50` | At most this many pictures per scan, frames included. An element's picture in a state comes with its picture and doesn't count apart. |
+| `states` | `true` | Also picture a finding made in a state the rule put the page in, in that state (below). |
 
 - **One picture per element.** Several rules can flag the same element. It's pictured once, and each of their occurrences carries the same `screenshot`. A file is named after where the element is, as `element-<hash>.png`, and is overwritten on the next run, so it keeps its name. `formatFailures()` names it under each finding (`   screenshot: …/element-3f9a1c07.png`).
 - **`path` is the file Cypress wrote.** There is no `buffer`, as in the other bindings: a spec runs in the browser. Read a picture in Node through a `cy.task()` if you need its bytes.
@@ -301,6 +302,7 @@ new A11yCoreBuilder()
   - `'off-screen'`: such as `left: -9999px`;
   - `'max-reached'`;
   - `'capture-failed'`, with the `error`: something on the page went wrong, such as an `<iframe>` that is gone.
+- **A picture in the state the finding was made in.** `text-spacing-content-loss` measures with the WCAG 1.4.12 text spacing applied and takes it off before the browser paints, so the picture of the page as it is shows the text fitting in the box that, with the spacing, cuts it off. Such a finding (core's `data.details.evidenceState`, `'text-spacing'`) also gets `stateScreenshots: [{ state: 'text-spacing', path, box }]`, the element pictured with the spacing applied, as `element-<hash>--text-spacing.png` beside its first picture. The spacing is core's own `evidenceState()`, the style sheet the rule measured with, and is taken off again afterwards. A state the page kept out says `{ state, skipped: 'state-not-applied' }`; `'state-unavailable'` means the installed core can't apply it. `formatFailures()` names the file as `   screenshot (text-spacing): …`. Needs `@surea11y/core` 1.15.0 and `@surea11y/binding-base` 1.7.0; with older ones there is no such field.
 - **The page is put back.** Each element is scrolled into view for its picture. Afterwards every scroll position is restored and the box removed. Something drawn over the element, such as a sticky header, shows as it does on screen.
 - **Frames.** With `.frames(true)`, an element in a same-origin `<iframe>` is pictured on the page as it shows there. Cross-origin frames aren't scanned in Cypress (see [Scanning every frame](#scanning-every-frame-including-same-origin-iframes)).
 - **Off by default.** Pictures of real pages can hold personal data, and they end up as CI artifacts.

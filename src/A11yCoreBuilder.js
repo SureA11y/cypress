@@ -7,6 +7,9 @@ const core = require('@surea11y/core');
 const { HOOK_REASON_CODES, occurrenceOutcome } = require('@surea11y/core/how-to-check');
 
 const { runa11yCoreInPage, preloadStyleSheets, getAnnouncements } = core;
+// Core 1.15.0 and later: puts the page in the state a finding was made in
+// (the WCAG text spacing), for its picture in that state. undefined before.
+const { evidenceState } = core;
 // The tasks @surea11y/cypress/plugin (src/plugin.js) registers: one prepares
 // packs in Node, one lists what a scan will check, one adds the steps that
 // answer each question. Named here, not imported: this file runs in the
@@ -27,6 +30,12 @@ const {
   screenshotToken,
   prepareElementScreenshot,
   releaseElementScreenshot,
+  // binding-base 1.7.0 and later: a finding's picture in the state it was
+  // made in. undefined before, and then no such picture is taken.
+  prepareStateScreenshot,
+  releaseStateScreenshot,
+  evidenceStateOf,
+  stateScreenshotFileName,
   conditionLabel,
   mergeConditionResults
 } = require('@surea11y/binding-base');
@@ -674,6 +683,15 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * the page (an <iframe> gone, an element that moved) is `capture-failed`
    * on the occurrences, but a cy.screenshot() that fails fails the test, as
    * any Cypress command does, before the page is put back.
+   *
+   * A finding made in a state the rule put the page in, and took it out of
+   * before the browser painted (core's `data.details.evidenceState`, the
+   * WCAG text spacing), gets a second picture with the page in that state,
+   * on `stateScreenshots`, as binding-base's own step takes it:
+   * `<dir or surea11y>/element-<hash>--text-spacing.png`. The pair counts
+   * once against `max`; `states: false` takes only the first. Needs
+   * binding-base 1.7.0 and core 1.15.0; with older ones, none is taken, or
+   * it says `state-unavailable`.
    * @param {object} result one frame's scan result, changed in place
    * @param {Window} win the window it was scanned in
    * @param {Array<{ frame: Window, iframe: Element }>} [framePath] the
@@ -705,25 +723,47 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
       });
   }
 
-  /** One element of _captureScreenshots(): its picture, or why there is none, on each of its occurrences. */
+  /**
+   * One element of _captureScreenshots(): its picture, or why there is none,
+   * on each of its occurrences; then its pictures in the states its findings
+   * were made in.
+   */
   _screenshotElement(element, win, framePath, frameError) {
     const options = this._screenshots;
     const scan = this._screenshotScan;
     const give = (screenshot) => {
       for (const occurrence of element.occurrences) occurrence.screenshot = screenshot;
+      return screenshot;
     };
-    if (frameError) return give({ skipped: 'capture-failed', error: frameError });
-    if (scan.taken >= options.max) return give({ skipped: 'max-reached' });
+    let chain;
+    if (frameError) chain = cy.wrap(give({ skipped: 'capture-failed', error: frameError }), { log: false });
+    else if (scan.taken >= options.max) chain = cy.wrap(give({ skipped: 'max-reached' }), { log: false });
+    else {
+      chain = this._pictureElement(element, win, framePath, () => this._screenshotName(element)).then((shot) => {
+        if (shot.path) scan.taken += 1;
+        return give(shot);
+      });
+    }
+    return chain.then((shot) => this._screenshotElementInStates(element, win, framePath, frameError, shot));
+  }
 
+  /**
+   * The element pictured as the page shows it now: `{ path, box }`, or
+   * `{ skipped }`. binding-base's prepare gets it ready, cy.screenshot()
+   * takes it, and its release puts the page back. `nameOf()` gives the
+   * file's name, asked only for a picture taken. Returns a chainable.
+   */
+  _pictureElement(element, win, framePath, nameOf) {
+    const options = this._screenshots;
     const token = screenshotToken();
     return cy
       .wrap(null, { log: false })
       .then(() => prepareElementScreenshot({ evaluateInFrame, frame: win, framePath, element, options, token }))
       .then((ready) => {
-        if (ready.skipped) return give(ready.error ? { skipped: ready.skipped, error: ready.error } : { skipped: ready.skipped });
+        if (ready.skipped) return ready.error ? { skipped: ready.skipped, error: ready.error } : { skipped: ready.skipped };
         let saved = null;
         return cy
-          .screenshot(this._screenshotName(element), {
+          .screenshot(nameOf(), {
             capture: 'viewport',
             clip: { x: ready.clip.x, y: ready.clip.y, width: ready.clip.width, height: ready.clip.height },
             overwrite: true,
@@ -733,11 +773,49 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
             }
           })
           .then(() => releaseElementScreenshot({ evaluateInFrame, frame: win, framePath, token }))
-          .then(() => {
-            scan.taken += 1;
-            give({ path: saved, box: ready.box, ...(ready.cropped ? { cropped: true } : {}) });
+          .then(() => ({ path: saved, box: ready.box, ...(ready.cropped ? { cropped: true } : {}) }));
+      });
+  }
+
+  /**
+   * The element's pictures in the states its findings were made in (core's
+   * evidenceState, the WCAG text spacing), each on the occurrences made in
+   * it as `stateScreenshots: [{ state, path, box }]`, or `{ state, skipped }`.
+   * The state is applied in the scanned window, the element pictured as
+   * _pictureElement() does, measured again in the state, and the state
+   * taken off. Nothing with a binding-base older than 1.7.0, which plans no
+   * states, or with `states: false`.
+   */
+  _screenshotElementInStates(element, win, framePath, frameError, shot) {
+    const options = this._screenshots;
+    const states = Array.isArray(element.states) ? element.states : [];
+    if (!options.states || !states.length || typeof prepareStateScreenshot !== 'function') return cy.wrap(null, { log: false });
+    const fn = typeof evidenceState === 'function' ? evidenceState : null;
+    let chain = cy.wrap(null, { log: false });
+    for (const state of states) {
+      const give = (entry) => {
+        const withState = { state, ...entry };
+        for (const occurrence of element.occurrences) {
+          if (evidenceStateOf(occurrence) === state) occurrence.stateScreenshots = [withState];
+        }
+      };
+      chain = chain.then(() => {
+        if (frameError) return give({ skipped: 'capture-failed', error: frameError });
+        if (shot && shot.skipped === 'max-reached') return give({ skipped: 'max-reached' });
+        const token = screenshotToken();
+        return cy
+          .wrap(null, { log: false })
+          .then(() => prepareStateScreenshot({ evaluateInFrame, frame: win, evidenceState: fn, state, token }))
+          .then((applied) => {
+            if (applied.skipped) return give(applied.error ? { skipped: applied.skipped, error: applied.error } : { skipped: applied.skipped });
+            const nameOf = () => this._screenshotName(element).replace(/[^/]+$/, (base) => stateScreenshotFileName(`${base}.png`, state).replace(/\.png$/, ''));
+            return this._pictureElement(element, win, framePath, nameOf)
+              .then((picture) => give(picture))
+              .then(() => releaseStateScreenshot({ evaluateInFrame, frame: win, evidenceState: fn, token }));
           });
       });
+    }
+    return chain;
   }
 
   /**

@@ -135,7 +135,7 @@ it('has no accessibility violations', () => {
 });
 ```
 
-`getScanGaps(result)` lists what one scan result says it left out, which its `checksResults` alone would pass over as clean: `{ kind: 'context-not-found' }` when the `.include()` scope matched no element, `'context-partly-not-found'` when some of several did not, one `'custom-rule-skipped'` (with `rule: { id, reason }`) per custom rule the engine did not run (a custom rule you excluded yourself with `.disableRules()` is listed in `skippedCustomRules` with `excluded: true`, and isn't a gap), and one `'pack-skipped'` (with `pack: { name, reason }`, from `results.skippedPacks`) per pack the page did not run (see [Scanning with packs](#scanning-with-packs-standards-checklists-and-your-own-rules)). Each has a `message`. For a `.frames(true)` scan, call it on `topFrame` and on each scanned frame.
+`getScanGaps(result)` lists what one scan result says it left out, which its `checksResults` alone would pass over as clean: `{ kind: 'context-not-found' }` when the `.include()` scope matched no element, `'context-partly-not-found'` when some of several did not, one `'custom-rule-skipped'` (with `rule: { id, reason }`) per custom rule the engine did not run (a custom rule you excluded yourself with `.disableRules()` is listed in `skippedCustomRules` with `excluded: true`, and isn't a gap), one `'pack-skipped'` (with `pack: { name, reason }`, from `results.skippedPacks`) per pack the page did not run (see [Scanning with packs](#scanning-with-packs-standards-checklists-and-your-own-rules)), and, with `@surea11y/core` 1.15, one `'profile-not-run'` (with `profile: { name, reason }`, from `results.engine.profilesNotRun`) per profile a scan of several did not run. Each has a `message`. For a `.frames(true)` scan, call it on `topFrame` and on each scanned frame.
 
 `getScanNotes(result)` says how the page was scanned, which a gap doesn't cover, and nothing was left out: `'forced-colors'` when the page was shown in [forced colors](#forced-colors), `'internals-hook'` when the scan asked about web components it could have read with the [internals hook](#web-components-the-internals-hook), and `'listener-hook'` or `'live-region-hook'` when findings that the [listener hook](#click-handlers-added-from-script-the-listener-hook) or the [live-region hook](#live-regions-the-live-region-hook-and-announcements) would have decided were judged without it (with `findingCount` and the `rules`). Which findings those are is core's `HOOK_REASON_CODES`, which this package's `getScanNotes()` reads from `@surea11y/core/how-to-check` in the spec's bundle; pass `{ hookReasonCodes }` to use others. The Command Log shows each hook note once per scan (see [below](#command-log-entries-automatically)).
 
@@ -574,6 +574,23 @@ new A11yCoreBuilder()
     results.rulesResults.filter((r) => r.meta && r.meta.standard === 'Acme web policy');
   });
 ```
+
+**Several profiles at once.** `.options({ profile })` also takes a list, a pack's profile beside WCAG's or another pack's (`@surea11y/core` 1.15 and later). Each profile judges the page as it would alone, and the result reads as one profile with the rules of all, in the top frame and in each frame with `.frames(true)`:
+
+```js
+new A11yCoreBuilder()
+  .withPacks('@surea11y/pack-wai-aria')
+  .options({ profile: ['wcag22-aa', 'wai-aria-1.2'] })
+  .analyze()
+  .then((results) => {
+    results.engine.profiles; // ['wcag22-aa', 'wai-aria-1.2']
+    // A rule both run is one check: its outcome is the worst, and its
+    // verdicts say what each profile makes of it.
+    results.checksResults.find((c) => c.ruleId === 'aria-allowed-attr').verdicts;
+  });
+```
+
+A profile that didn't run is in `results.engine.profilesNotRun`, with why, and `getScanGaps()` reports it as `'profile-not-run'`. Core's [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md#several-profiles) has the whole result.
 
 A pack's own rules appear in `checksResults` like core's, with ids that start with its namespace (`acme-no-autoplay`). Without its profile, a pack's rules run only when selected, with `.withRules()` or by a tag. `@surea11y/core`'s HTML, SARIF and JUnit reports show a standard's or a checklist's items in a section of their own. Pass an array, or call `.withPacks()` again, to scan with several packs.
 

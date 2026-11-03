@@ -8,7 +8,7 @@ A Cypress binding for [`@surea11y/core`](https://github.com/SureA11y/core) — s
 npm install @surea11y/core @surea11y/cypress cypress
 ```
 
-`@surea11y/core` 1.12.0 or later, the engine, comes with the binding as a regular dependency, so a project that doesn't list it still works. List it in your own `package.json` too, as the line above does: your project and the binding then share one copy, so whatever you do with core directly, writing a SARIF log or an HTML report (`@surea11y/core/sarif`, `/report`), reading the rule catalogue or keeping a baseline, reads results with the same core that produced them. When your core can't match the binding's range, as with a linked checkout (`file:../core`) or a fork, add `"overrides": { "@surea11y/core": "$@surea11y/core" }` beside it.
+`@surea11y/core` 1.14.0 or later, the engine, comes with the binding as a regular dependency, so a project that doesn't list it still works. List it in your own `package.json` too, as the line above does: your project and the binding then share one copy, so whatever you do with core directly, writing a SARIF log or an HTML report (`@surea11y/core/sarif`, `/report`), reading the rule catalogue or keeping a baseline, reads results with the same core that produced them. When your core can't match the binding's range, as with a linked checkout (`file:../core`) or a fork, add `"overrides": { "@surea11y/core": "$@surea11y/core" }` beside it.
 
 **Coming in 2.0:** core becomes a peer dependency, so the binding will no longer install it for you, and the `overrides` entry is no longer needed. Add `@surea11y/core` to your `package.json` now and 2.0 needs no change.
 
@@ -41,7 +41,7 @@ it('has no accessibility violations', () => {
 });
 ```
 
-`results` is `@surea11y/core`'s own native result shape (and `results.engine.version` says which core release produced it, for example `"1.12.0"`; from 1.4.0 this package needs core 1.12.0 or later, see [What changes with `@surea11y/core` 1.12](#what-changes-with-surea11ycore-112)) — see [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md) — not the `violations`/`passes`/`incomplete`/`inapplicable` shape used by other popular accessibility testing tools for Cypress. The builder's *method names* are modeled on common conventions in this space for migration familiarity; the richer result schema is kept as-is.
+`results` is `@surea11y/core`'s own native result shape (and `results.engine.version` says which core release produced it, for example `"1.14.0"`; from 1.5.0 this package needs core 1.14.0 or later, and from 1.4.0 it needed 1.12.0 or later, see [What changes with `@surea11y/core` 1.14](#what-changes-with-surea11ycore-114) and [What changes with `@surea11y/core` 1.12](#what-changes-with-surea11ycore-112)) — see [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md) — not the `violations`/`passes`/`incomplete`/`inapplicable` shape used by other popular accessibility testing tools for Cypress. The builder's *method names* are modeled on common conventions in this space for migration familiarity; the richer result schema is kept as-is.
 
 **No `{ page }`/`{ browser }`/`{ driver }` constructor argument**, unlike most driver-based bindings — there's no such handle in Cypress. `cy` is ambient in every spec file and *is* the driver; `A11yCoreBuilder` calls `cy.window()` itself inside `analyze()`.
 

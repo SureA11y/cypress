@@ -475,6 +475,28 @@ describe('A11yCoreBuilder', () => {
     });
   });
 
+  // The app under test runs in an iframe of Cypress's runner; it is still
+  // the page, judged by the rules about the page. Needs a core that takes
+  // engineOptions.topLevelDocument.
+  const itWithTopLevelDocument = (() => {
+    try {
+      runa11yCoreInPage(null, null, { topLevelDocument: true, strictOptions: true }, ['img-alt-present']);
+      return it;
+    } catch {
+      return it.skip;
+    }
+  })();
+
+  itWithTopLevelDocument('the app under test is the page: a missing title and language fail', () => {
+    cy.visit('cypress/fixtures/no-title.html');
+
+    new A11yCoreBuilder().withRules(['page-title-present', 'html-lang-attr-present']).analyze().then((results) => {
+      const outcome = (id) => results.checksResults.find((r) => r.ruleId === id).outcome;
+      expect(outcome('page-title-present')).to.equal('fail');
+      expect(outcome('html-lang-attr-present')).to.equal('fail');
+    });
+  });
+
   it('frames(true) with no sub-frames returns { topFrame, frames: [] }', () => {
     cy.visit('cypress/fixtures/basic.html');
 

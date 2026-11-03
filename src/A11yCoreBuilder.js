@@ -591,7 +591,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
 
   _scanWindow(contextSelector, engineOptions, runOnly) {
     return cy.window().then((win) => {
-      const scans = [{ win, framePath: [], result: this._runInWindow(win, this._url, contextSelector, engineOptions, runOnly) }];
+      const scans = [{ win, framePath: [], result: this._runPage(win, contextSelector, engineOptions, runOnly) }];
       if (this._scanFrames) this._collectFrames(win, engineOptions, runOnly, scans, [], contextSelector);
 
       const finish = () => {
@@ -965,6 +965,27 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * why `.call(win, ...)` alone would silently scan
    * the wrong document.
    */
+  /**
+   * Scans the app under test. Cypress shows it in an iframe of its runner,
+   * where core reads a document as no page of its own, so the rules about
+   * the page (its title, language, main landmark, ...) would not apply:
+   * engineOptions.topLevelDocument says it is the page. A core that doesn't
+   * know the option ignores it, unless strictOptions refuses it, and then
+   * it is scanned without it, as before.
+   */
+  _runPage(win, contextSelector, engineOptions, runOnly) {
+    const eo = engineOptions && typeof engineOptions === 'object' ? engineOptions : {};
+    if ('topLevelDocument' in eo) return this._runInWindow(win, this._url, contextSelector, engineOptions, runOnly);
+    try {
+      return this._runInWindow(win, this._url, contextSelector, { ...eo, topLevelDocument: true }, runOnly);
+    } catch (e) {
+      const refused = e && e.code === 'INVALID_ENGINE_OPTIONS'
+        && (Array.isArray(e.problems) ? e.problems.some((p) => p && p.path === 'topLevelDocument') : /topLevelDocument/.test(e.message));
+      if (!refused) throw e;
+      return this._runInWindow(win, this._url, contextSelector, engineOptions, runOnly);
+    }
+  }
+
   _runInWindow(win, url, contextSelector, engineOptions, runOnly) {
     // withPacks()'s packs, registered in this window before the scan names
     // them in engineOptions.packs.

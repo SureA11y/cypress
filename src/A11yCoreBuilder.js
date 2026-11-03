@@ -49,7 +49,7 @@ const {
 } = require('@surea11y/binding-base');
 
 // What a frame is under, with what the frames around it are under
-// (binding-base 1.8 and later; aria-hidden and inert alike).
+// (binding-base 1.7 and later; aria-hidden and inert alike).
 const inheritFrameReading = inheritFrameReadingOf || ((above, reading) => ({
   ariaHidden: !!((above && above.ariaHidden) || (reading && reading.ariaHidden)),
   inert: !!((above && above.inert) || (reading && reading.inert))
@@ -581,7 +581,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   /**
    * The text of the style sheets `win` can't read (another origin's) that
    * their server shares (CORS), fetched in the page's own realm with core's
-   * preloadStyleSheets(), as axe does: a Cypress spec runs in the browser, so
+   * preloadStyleSheets(): a Cypress spec runs in the browser, so
    * a sheet whose server doesn't share it stays unread. [] with
    * fetchStyleSheets(false), or a core before 1.14.0.
    */

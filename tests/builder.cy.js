@@ -552,6 +552,45 @@ describe('A11yCoreBuilder', () => {
     });
   });
 
+  // A frame under inert, one slotted into a component whose slot is under
+  // aria-hidden, one an open modal dialog covers, and one in the dialog.
+  // Needs binding-base's inheritFrameReading and a core that takes
+  // engineOptions.embeddedInert.
+  const itWithFrameInert = (() => {
+    if (typeof require('@surea11y/binding-base').inheritFrameReading !== 'function') return it.skip;
+    try {
+      runa11yCoreInPage(null, null, { embeddedInert: true, strictOptions: true }, ['img-alt-present']);
+      return it;
+    } catch {
+      return it.skip;
+    }
+  })();
+
+  itWithFrameInert('frames(true) leaves out a frame behind an open modal dialog, and scans one under inert, or slotted under aria-hidden, as such', () => {
+    cy.visit('cypress/fixtures/frame-inert.html');
+    cy.window().should((win) => {
+      expect([...win.document.querySelectorAll('iframe')].every((f) => f.contentDocument && f.contentDocument.title)).to.be.true;
+    });
+
+    // With the dialog open, only the frame in it is scanned: the browser
+    // makes everything else inert.
+    new A11yCoreBuilder().frames(true).analyze().then((results) => {
+      expect(results.frames.map((f) => f.title || f.error)).to.deep.equal(['in-dialog']);
+    });
+    cy.window().then((win) => win.document.getElementById('d').close());
+
+    // With it closed, the frame under inert, and the one slotted under
+    // aria-hidden, are scanned as such, and the one it covered as it is.
+    new A11yCoreBuilder().frames(true).analyze().then((results) => {
+      const titles = results.frames.map((f) => f.title || f.error);
+      expect([...titles].sort()).to.deep.equal(['covered', 'inert', 'slotted']);
+      const img = (title) => results.frames.find((f) => f.title === title).checksResults.find((r) => r.ruleId === 'img-alt-present');
+      expect(img('inert') && img('inert').outcome, 'a name is no rule of inert content').not.to.equal('fail');
+      expect(img('slotted') && img('slotted').outcome, 'aria-hidden around the slot reaches the slotted frame').not.to.equal('fail');
+      expect(img('covered').outcome).to.equal('fail');
+    });
+  });
+
   itWithFramePolicy('frames(true) reads frames as core does -- hidden, excluded, out-of-scope and empty ones left out, an aria-hidden one scanned as aria-hidden, one in a shadow root found', () => {
     cy.visit('cypress/fixtures/frame-policy.html');
 

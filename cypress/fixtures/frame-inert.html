@@ -1,0 +1,3 @@
+<!doctype html><html lang="en"><head><title>Frames</title></head><body>
+<main><div inert><iframe title="inert" srcdoc="<html lang=en><title>inert</title><img src=a.png>"></iframe></div><x-wrap><iframe title="slotted" srcdoc="<html lang=en><title>slotted</title><img src=a.png>"></iframe></x-wrap><iframe title="covered" srcdoc="<html lang=en><title>covered</title><img src=a.png>"></iframe><dialog id="d"><p>Cookies?</p><iframe title="in-dialog" srcdoc="<html lang=en><title>in-dialog</title><img src=a.png>"></iframe></dialog></main>
+<script>document.querySelector("x-wrap").attachShadow({mode:"open"}).innerHTML='<div aria-hidden="true"><slot></slot></div>';document.getElementById("d").showModal();</script></body></html>

@@ -44,8 +44,16 @@ const {
   readFrameElement,
   isFrameDocumentEmpty,
   frameReadingOptions,
-  frameEngineOptions
+  frameEngineOptions,
+  inheritFrameReading: inheritFrameReadingOf
 } = require('@surea11y/binding-base');
+
+// What a frame is under, with what the frames around it are under
+// (binding-base 1.8 and later; aria-hidden and inert alike).
+const inheritFrameReading = inheritFrameReadingOf || ((above, reading) => ({
+  ariaHidden: !!((above && above.ariaHidden) || (reading && reading.ariaHidden)),
+  inert: !!((above && above.inert) || (reading && reading.inert))
+}));
 
 // Where .screenshots() pictures go without `dir`, under Cypress's own
 // screenshots folder.
@@ -1018,23 +1026,24 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * Each frame is read as core's own scan across frames reads it
    * (binding-base's frames helpers): one the page doesn't show, that is
    * excluded or (a frame of the top page) outside include()'s roots, or
-   * that shows nothing is left out with its frames; one under aria-hidden is
-   * scanned with embeddedAriaHidden, and so are its frames. <frame>s and
-   * frames in open shadow roots are found too.
+   * that shows nothing, or that an open modal dialog covers, is left out
+   * with its frames; one under aria-hidden is scanned with
+   * embeddedAriaHidden, one under inert with embeddedInert, and so are their
+   * frames. <frame>s and frames in open shadow roots are found too.
    *
    * @param {string|string[]|null} [contextSelector] include()'s selectors,
    *   for the frames of the top page
-   * @param {boolean} [ariaHiddenAbove] whether a frame this one is in is
-   *   under aria-hidden
+   * @param {{ ariaHidden?: boolean, inert?: boolean }|null} [above] what the
+   *   frame this one is in is under
    */
-  _collectFrames(win, engineOptions, runOnly, out, framePath, contextSelector = null, ariaHiddenAbove = false) {
+  _collectFrames(win, engineOptions, runOnly, out, framePath, contextSelector = null, above = null) {
     const policy = typeof readFrameElement === 'function';
     const iframeEls = policy ? findFrameElements(win.document) : win.document.querySelectorAll('iframe');
     const readingOptions = policy ? frameReadingOptions(engineOptions, contextSelector, framePath.length === 0) : null;
     for (const el of iframeEls) {
       const reading = policy ? readFrameElement(el, readingOptions) : {};
       if (reading.skipped) continue;
-      const ariaHidden = ariaHiddenAbove || !!reading.ariaHidden;
+      const under = inheritFrameReading(above, reading);
       let childWin = null;
       let accessError = null;
       try {
@@ -1060,7 +1069,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
       // The <iframe>s leading to this frame, for .screenshots() to place its
       // elements on the app's page.
       const childPath = framePath.concat({ frame: win, iframe: el });
-      const childOptions = policy ? frameEngineOptions(engineOptions, { ariaHidden }) : engineOptions;
+      const childOptions = policy ? frameEngineOptions(engineOptions, under) : engineOptions;
       try {
         // pageUrl: null -- let surea11y self-detect each frame's own URL
         // via its own document.location.href fallback (see src/core.js),
@@ -1079,7 +1088,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         continue;
       }
 
-      this._collectFrames(childWin, engineOptions, runOnly, out, childPath, null, ariaHidden);
+      this._collectFrames(childWin, engineOptions, runOnly, out, childPath, null, under);
     }
   }
 

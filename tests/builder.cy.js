@@ -1,7 +1,20 @@
 'use strict';
 
 const { A11yCoreBuilder, formatFailures, getScanGaps, getScanNotes, installInternalsHook, installListenerHook, installLiveRegionHook } = require('../src/index.js');
-const { leaningFailures, occurrenceOutcome } = require('@surea11y/core');
+const { leaningFailures, occurrenceOutcome, runa11yCoreInPage } = require('@surea11y/core');
+
+// How .frames(true) reads frames as core does needs binding-base's frames
+// helpers and a core that takes engineOptions.embeddedAriaHidden; `it` when
+// both are there, `it.skip` otherwise.
+const itWithFramePolicy = (() => {
+  if (typeof require('@surea11y/binding-base').readFrameElement !== 'function') return it.skip;
+  try {
+    runa11yCoreInPage(null, null, { embeddedAriaHidden: true, strictOptions: true }, ['img-alt-present']);
+    return it;
+  } catch {
+    return it.skip;
+  }
+})();
 
 // Shared across the customRules tests below -- reported outcome depends on
 // whether ctx.document has a .my-widget element. Unlike every sibling
@@ -500,19 +513,32 @@ describe('A11yCoreBuilder', () => {
     });
   });
 
-  it('include() scopes the top frame only when combined with frames(true) -- each sub-frame is scanned whole', () => {
-    cy.visit('cypress/fixtures/frame-parent-same-origin.html');
+  itWithFramePolicy('include() scopes the top frame and which of its frames are scanned when combined with frames(true) -- each scanned whole', () => {
+    cy.visit('cypress/fixtures/frame-include.html');
 
-    // 'button' matches the top frame's button and nothing in the child
-    // frame. Passed down, it would leave the child frame unscanned.
-    new A11yCoreBuilder().include('button').frames(true).analyze().then((results) => {
-      expect(results.topFrame.contextSelector).to.equal('button');
+    // 'main' matches the top frame's <main> and nothing in the child frame.
+    // Passed down, it would leave the child frame unscanned; the frame
+    // outside <main> is left out, as core's own scan across frames leaves it.
+    new A11yCoreBuilder().include('main').frames(true).analyze().then((results) => {
+      expect(results.topFrame.contextSelector).to.equal('main');
       expect(results.topFrame.contextMatch).to.deep.equal({ elementCount: 1, unmatchedSelectors: [] });
 
       expect(results.frames).to.have.length(1);
       expect(results.frames[0].contextSelector).to.equal(null);
       expect(results.frames[0].contextMatch).to.equal(null);
       expect(results.frames[0].checksResults.find((r) => r.ruleId === 'img-alt-present').outcome).to.equal('fail');
+    });
+  });
+
+  itWithFramePolicy('frames(true) reads frames as core does -- hidden, excluded, out-of-scope and empty ones left out, an aria-hidden one scanned as aria-hidden, one in a shadow root found', () => {
+    cy.visit('cypress/fixtures/frame-policy.html');
+
+    new A11yCoreBuilder().include('#main').exclude('.ad').frames(true).analyze().then((results) => {
+      expect(results.frames.map((f) => f.title || f.error)).to.deep.equal(['aria-hidden', 'shadowed']);
+      const fails = (f) => f.checksResults.filter((r) => r.outcome === 'fail').map((r) => r.ruleId);
+      const [ariaHidden, shadowed] = results.frames;
+      expect(fails(ariaHidden), 'out of the accessibility tree, a name is no rule').not.to.include('img-alt-present');
+      expect(fails(shadowed), 'a frame in a shadow root is scanned').to.include('img-alt-present');
     });
   });
 

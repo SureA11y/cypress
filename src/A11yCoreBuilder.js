@@ -37,7 +37,14 @@ const {
   evidenceStateOf,
   stateScreenshotFileName,
   conditionLabel,
-  mergeConditionResults
+  mergeConditionResults,
+  // How .frames(true) finds and reads each frame (binding-base 1.7 and
+  // later); undefined before, and then every same-origin <iframe> is scanned.
+  findFrameElements,
+  readFrameElement,
+  isFrameDocumentEmpty,
+  frameReadingOptions,
+  frameEngineOptions
 } = require('@surea11y/binding-base');
 
 // Where .screenshots() pictures go without `dir`, under Cypress's own
@@ -585,7 +592,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   _scanWindow(contextSelector, engineOptions, runOnly) {
     return cy.window().then((win) => {
       const scans = [{ win, framePath: [], result: this._runInWindow(win, this._url, contextSelector, engineOptions, runOnly) }];
-      if (this._scanFrames) this._collectFrames(win, engineOptions, runOnly, scans, []);
+      if (this._scanFrames) this._collectFrames(win, engineOptions, runOnly, scans, [], contextSelector);
 
       const finish = () => {
         const results = scans.map((scan) => {
@@ -986,10 +993,27 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * the top frame's selectors down would leave a frame unscanned whenever
    * they name elements of the top document (and before 1.10.0 they were
    * silently ignored there, so the frame was scanned whole anyway).
+   *
+   * Each frame is read as core's own scan across frames reads it
+   * (binding-base's frames helpers): one the page doesn't show, that is
+   * excluded or (a frame of the top page) outside include()'s roots, or
+   * that shows nothing is left out with its frames; one under aria-hidden is
+   * scanned with embeddedAriaHidden, and so are its frames. <frame>s and
+   * frames in open shadow roots are found too.
+   *
+   * @param {string|string[]|null} [contextSelector] include()'s selectors,
+   *   for the frames of the top page
+   * @param {boolean} [ariaHiddenAbove] whether a frame this one is in is
+   *   under aria-hidden
    */
-  _collectFrames(win, engineOptions, runOnly, out, framePath) {
-    const iframeEls = win.document.querySelectorAll('iframe');
+  _collectFrames(win, engineOptions, runOnly, out, framePath, contextSelector = null, ariaHiddenAbove = false) {
+    const policy = typeof readFrameElement === 'function';
+    const iframeEls = policy ? findFrameElements(win.document) : win.document.querySelectorAll('iframe');
+    const readingOptions = policy ? frameReadingOptions(engineOptions, contextSelector, framePath.length === 0) : null;
     for (const el of iframeEls) {
+      const reading = policy ? readFrameElement(el, readingOptions) : {};
+      if (reading.skipped) continue;
+      const ariaHidden = ariaHiddenAbove || !!reading.ariaHidden;
       let childWin = null;
       let accessError = null;
       try {
@@ -1010,9 +1034,12 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         continue;
       }
 
+      if (policy && isFrameDocumentEmpty(childWin.document)) continue;
+
       // The <iframe>s leading to this frame, for .screenshots() to place its
       // elements on the app's page.
       const childPath = framePath.concat({ frame: win, iframe: el });
+      const childOptions = policy ? frameEngineOptions(engineOptions, { ariaHidden }) : engineOptions;
       try {
         // pageUrl: null -- let surea11y self-detect each frame's own URL
         // via its own document.location.href fallback (see src/core.js),
@@ -1020,7 +1047,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         // the Command Log entries come after, in _scan(), with childWin --
         // see _logFindings()'s own comment on why $el must be scoped to the
         // frame that was actually scanned.
-        out.push({ win: childWin, framePath: childPath, result: this._runInWindow(childWin, null, null, engineOptions, runOnly) });
+        out.push({ win: childWin, framePath: childPath, result: this._runInWindow(childWin, null, null, childOptions, runOnly) });
       } catch (e) {
         out.push({
           failed: {
@@ -1031,7 +1058,7 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
         continue;
       }
 
-      this._collectFrames(childWin, engineOptions, runOnly, out, childPath);
+      this._collectFrames(childWin, engineOptions, runOnly, out, childPath, null, ariaHidden);
     }
   }
 

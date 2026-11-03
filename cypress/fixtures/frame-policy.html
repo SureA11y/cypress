@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head><title>frame policy</title></head>
+<body>
+  <main id="main">
+    <h1>Frames read as core reads them</h1>
+    <!-- Not shown: left out. -->
+    <iframe id="hidden" title="Hidden" style="display:none" srcdoc="<html lang=en><title>hidden</title><img src=a.png>"></iframe>
+    <!-- In exclude()d content: left out. -->
+    <div class="ad"><iframe id="excluded" title="Ad" srcdoc="<html lang=en><title>excluded</title><img src=a.png>"></iframe></div>
+    <!-- Under aria-hidden: scanned as aria-hidden, so a name is no rule. -->
+    <div aria-hidden="true"><iframe id="aria-hidden" srcdoc="<html lang=en><title>aria-hidden</title><img src=a.png>"></iframe></div>
+    <!-- Shows nothing: left out. -->
+    <iframe id="empty" title="Empty"></iframe>
+    <x-host></x-host>
+  </main>
+  <!-- Outside include('#main'): left out. -->
+  <iframe id="outside" title="Outside" srcdoc="<html lang=en><title>outside</title><img src=a.png>"></iframe>
+  <script>
+    // In an open shadow root: found and scanned.
+    document.querySelector('x-host').attachShadow({ mode: 'open' }).innerHTML =
+      '<iframe title="Shadowed" srcdoc="<html lang=en><title>shadowed</title><img src=s.png>"></iframe>';
+  </script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="en">
+<head><title>frame include</title></head>
+<body>
+  <main>
+    <button>Top button, has a name</button>
+    <iframe id="inside" src="frame-child-same-origin.html"></iframe>
+  </main>
+  <!-- Outside include('main'): left out, as core's own scan across frames leaves it. -->
+  <iframe id="outside" srcdoc="<html lang=en><title>outside</title><img src=b.png>"></iframe>
+</body>
+</html>

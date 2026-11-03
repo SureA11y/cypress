@@ -48,7 +48,8 @@ const gaps: ScanGap[] = getScanGaps(result);
 for (const gap of gaps) {
   if (gap.kind === 'custom-rule-skipped') gap.rule.reason.toUpperCase();
   else if (gap.kind === 'pack-skipped') gap.pack.reason.toUpperCase();
-  else gap.selectors.join(', ');
+  // A gap of a kind added later, such as profile-not-run, has no selectors.
+  else if ('selectors' in gap) gap.selectors.join(', ');
 }
 const where: string = formatOccurrenceLocation(occurrence);
 for (const note of getScanNotes(result)) {

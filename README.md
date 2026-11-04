@@ -8,7 +8,7 @@ A Cypress binding for [`@surea11y/core`](https://github.com/SureA11y/core) — s
 npm install @surea11y/core @surea11y/cypress cypress
 ```
 
-`@surea11y/core` 1.14.0 or later, the engine, comes with the binding as a regular dependency, so a project that doesn't list it still works. List it in your own `package.json` too, as the line above does: your project and the binding then share one copy, so whatever you do with core directly, writing a SARIF log or an HTML report (`@surea11y/core/sarif`, `/report`), reading the rule catalogue or keeping a baseline, reads results with the same core that produced them. When your core can't match the binding's range, as with a linked checkout (`file:../core`) or a fork, add `"overrides": { "@surea11y/core": "$@surea11y/core" }` beside it.
+`@surea11y/core` 1.15.0 or later, the engine, comes with the binding as a regular dependency, so a project that doesn't list it still works. List it in your own `package.json` too, as the line above does: your project and the binding then share one copy, so whatever you do with core directly, writing a SARIF log or an HTML report (`@surea11y/core/sarif`, `/report`), reading the rule catalogue or keeping a baseline, reads results with the same core that produced them. When your core can't match the binding's range, as with a linked checkout (`file:../core`) or a fork, add `"overrides": { "@surea11y/core": "$@surea11y/core" }` beside it.
 
 **Coming in 2.0:** core becomes a peer dependency, so the binding will no longer install it for you, and the `overrides` entry is no longer needed. Add `@surea11y/core` to your `package.json` now and 2.0 needs no change.
 
@@ -41,7 +41,7 @@ it('has no accessibility violations', () => {
 });
 ```
 
-`results` is `@surea11y/core`'s own native result shape (and `results.engine.version` says which core release produced it, for example `"1.14.0"`; from 1.5.0 this package needs core 1.14.0 or later, and from 1.4.0 it needed 1.12.0 or later, see [What changes with `@surea11y/core` 1.14](#what-changes-with-surea11ycore-114) and [What changes with `@surea11y/core` 1.12](#what-changes-with-surea11ycore-112)) — see [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md) — not the `violations`/`passes`/`incomplete`/`inapplicable` shape used by other popular accessibility testing tools for Cypress. The builder's *method names* are modeled on common conventions in this space for migration familiarity; the richer result schema is kept as-is.
+`results` is `@surea11y/core`'s own native result shape (and `results.engine.version` says which core release produced it, for example `"1.14.0"`; from 1.6.0 this package needs core 1.15.0 or later, from 1.5.0 it needed 1.14.0 or later, and from 1.4.0 1.12.0 or later, see [What changes with `@surea11y/core` 1.15](#what-changes-with-surea11ycore-115), [What changes with `@surea11y/core` 1.14](#what-changes-with-surea11ycore-114) and [What changes with `@surea11y/core` 1.12](#what-changes-with-surea11ycore-112)) — see [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md) — not the `violations`/`passes`/`incomplete`/`inapplicable` shape used by other popular accessibility testing tools for Cypress. The builder's *method names* are modeled on common conventions in this space for migration familiarity; the richer result schema is kept as-is.
 
 **No `{ page }`/`{ browser }`/`{ driver }` constructor argument**, unlike most driver-based bindings — there's no such handle in Cypress. `cy` is ambient in every spec file and *is* the driver; `A11yCoreBuilder` calls `cy.window()` itself inside `analyze()`.
 
@@ -617,6 +617,17 @@ new A11yCoreBuilder().fetchStyleSheets(false).analyze();
 Every occurrence already carries `selector` and (with `.elementRef(true)`, above) a live `Element`. It also carries `structuralPath` — a sibling-index path from the document root down to the flagged element (e.g. `[1, 0, 2]`) — a more robust identity than a selector string alone, since it survives some DOM changes a selector wouldn't. No opt-in needed.
 
 An occurrence inside a shadow tree also carries `shadowHostSelectors`: the selectors of the shadow hosts leading to it, outermost first, each resolved in the tree that holds it. Its `selector` then holds only inside the last host's shadow root, so `document.querySelector(selector)` finds another element or none, and its `structuralPath` is `null`. `.elementRef(true)`, the Command Log and `formatFailures()` all follow the hosts (`@surea11y/core` 1.10.0 and later). See [`OUTPUT_SCHEMA.md`](https://github.com/SureA11y/core/blob/main/docs/OUTPUT_SCHEMA.md) for the full field description.
+
+## What changes with `@surea11y/core` 1.15
+
+With `@surea11y/core` 1.15.0, what a scan through this binding shows differently (core's [`CHANGELOG.md`](https://github.com/SureA11y/core/blob/main/CHANGELOG.md) has the full list):
+
+- **WCAG fails only where WCAG fails.** Where only WAI-ARIA or the HTML content model is broken (an attribute the role doesn't support, an unnamed grid or dialog, a heading in a list), the ARIA and HTML structure rules now ask (`cantTell`, uncertainty `spec-only`) instead of failing. The findings keep their reason codes, so baselines still match, and a gate on `fail` no longer fails on them.
+- **The app under test is still judged as the page.** Core 1.15 reads a document shown in a frame as no page of its own, and Cypress shows the app in one, so `analyze()` passes `topLevelDocument: true` for it. Frames inside the app are read as the browser reads them: one under `aria-hidden` or `inert` as such, one behind an open modal dialog left out, one in a shadow root through its host ([more](#scanning-every-frame-including-same-origin-iframes)).
+- **Several profiles at once.** `.options({ profile: ['wcag22-aa', 'wai-aria-1.2'] })`, with the packs that bring them, judges the page by each; a profile that can't run is a `profile-not-run` gap ([more](#scanning-with-packs-standards-checklists-and-your-own-rules)).
+- **A picture in the state the finding was made in.** A `text-spacing-content-loss` finding is also pictured with the spacing applied ([more](#a-picture-of-each-failing-element)).
+- **How to check by hand.** Core's procedures say how a person assesses each criterion, and its HTML report lists what a scan leaves to a person.
+- **Roles follow WAI-ARIA more closely:** `role="text"` names no role, and an image with a presentational role and a global ARIA attribute keeps its role, so it fails without `alt`.
 
 ## What changes with `@surea11y/core` 1.14
 

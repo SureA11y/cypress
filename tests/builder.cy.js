@@ -691,8 +691,10 @@ describe('A11yCoreBuilder', () => {
       // like every other minimal test fixture here) also carries several
       // genuine 'cantTell' manual-review findings, which _logFindings()
       // logs too (same outcomes formatFailures() covers) but aren't this
-      // test's concern.
-      new A11yCoreBuilder().reportOnly(['fail']).analyze().then((results) => {
+      // test's concern. withWcag('2.2', 'AA') keeps it to the WCAG target the
+      // fixture is written for: a full scan also runs the AAA rules, and core
+      // 1.17's target-size-enhanced fails the fixture's buttons, under 44px.
+      new A11yCoreBuilder().withWcag('2.2', 'AA').reportOnly(['fail']).analyze().then((results) => {
         // basic.html's known fails: button-name-present and img-alt-present,
         // both used elsewhere in this file.
         expect(results.checksResults, 'sanity check: basic.html has known fails').to.have.length(2);
@@ -734,8 +736,9 @@ describe('A11yCoreBuilder', () => {
       // it's what makes checksResults (and so _logFindings' own input)
       // actually empty, the same way the "no detectable violations" gate in
       // the consuming UI project's own clean-views spec only asserts on
-      // 'fail', not 'cantTell'.
-      new A11yCoreBuilder().reportOnly(['fail']).analyze().then((results) => {
+      // 'fail', not 'cantTell'. withWcag('2.2', 'AA'), as above: under a full
+      // scan, core 1.17's AAA target-size-enhanced fails its button.
+      new A11yCoreBuilder().withWcag('2.2', 'AA').reportOnly(['fail']).analyze().then((results) => {
         expect(results.checksResults, 'sanity check: well-formed.html has no fails').to.have.length(0);
         expect(logSpy.getCalls().filter((c) => c.args[0].name === 'surea11y error!')).to.have.length(0);
         expect(logSpy.getCalls().filter((c) => c.args[0].name === 'surea11y violation summary')).to.have.length(0);

@@ -27,6 +27,40 @@ describe('style sheets from another origin', () => {
       .then((results) => expect(lock(results).outcome).to.equal('fail'));
   });
 
+  it('with a time budget, gives up on a slow sheet at half of it and says so', () => {
+    // Defined last, so it answers before the beforeEach one: 4 seconds late.
+    cy.intercept('https://cdn.other.test/site.css', {
+      headers: { 'content-type': 'text/css', 'access-control-allow-origin': '*' },
+      body: LOCK,
+      delay: 4000
+    });
+    const started = Date.now();
+    new A11yCoreBuilder()
+      .withRules('css-orientation-lock')
+      .options({ timeBudgetMs: 1000 })
+      .analyze()
+      .then((results) => {
+        expect(Date.now() - started).to.be.lessThan(4000);
+        expect(lock(results).outcome).to.equal('cantTell');
+        expect(results.engine.incomplete).to.deep.include({
+          reason: 'timeBudget',
+          timeBudgetMs: 1000,
+          styleSheetsNotRead: ['https://cdn.other.test/site.css']
+        });
+      });
+  });
+
+  it('with a time budget the sheet answers within, reads it, and the result is complete', () => {
+    new A11yCoreBuilder()
+      .withRules('css-orientation-lock')
+      .options({ timeBudgetMs: 10000 })
+      .analyze()
+      .then((results) => {
+        expect(lock(results).outcome).to.equal('fail');
+        expect(results.engine).not.to.have.property('incomplete');
+      });
+  });
+
   it('with fetchStyleSheets(false), asks as before', () => {
     new A11yCoreBuilder()
       .withRules('css-orientation-lock')

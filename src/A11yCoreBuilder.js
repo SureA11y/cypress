@@ -63,6 +63,15 @@ const SCREENSHOTS_FOLDER = 'surea11y';
 // how the page was loaded, which a scan can't fix afterwards.
 const HOOK_NOTES = ['internals-hook', 'listener-hook', 'live-region-hook'];
 
+// engineOptions.timeBudgetMs as core 1.18.0 reads it: a finite number above
+// 0, or null for none (left out, Infinity, or a value core refuses).
+function readTimeBudget(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+}
+// The least budget left to a scan after fetching style sheets: core reads 0
+// as no budget, so a budget spent is passed as one that ends at once.
+const MIN_BUDGET_MS = 0.001;
+
 // binding-base's in-page screenshots step, run in a window of the app: the
 // spec reaches it directly, so it runs there from its source, as the scan
 // does (see _runInWindow()), with no serialization in between.
@@ -566,13 +575,31 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
     // results; without it, the results are finished at once.
     // The style sheets the page can't read, fetched in the page where their
     // server shares them, before the scan (core 1.14.0's preloadStyleSheets).
+    // A time budget (engineOptions.timeBudgetMs, core 1.18.0) bounds the
+    // whole scan, as core's runa11yCoreInPageAsync does: it counts from
+    // before the fetching, which may take half of it, and the scan is given
+    // what is left. The sheets given up on for it are put on the top
+    // window's result (binding-base's _applyStyleSheetBudget()).
+    const budget = readTimeBudget(engineOptions.timeBudgetMs);
+    let started;
     return cy
       .window({ log: false })
-      .then({ timeout: 10000 }, (win) => this._preloadStyleSheets(win))
+      .then({ timeout: 10000 }, (win) => {
+        started = Date.now();
+        return this._preloadStyleSheets(win, budget === null ? undefined : started + budget / 2);
+      })
       .then((sheets) => {
         if (sheets && sheets.length) {
           const given = Array.isArray(engineOptions.styleSheetTexts) ? engineOptions.styleSheetTexts : [];
           engineOptions.styleSheetTexts = given.concat(sheets.filter((s) => !given.some((g) => g && g.href === s.href)));
+        }
+        this._styleSheetBudget = null;
+        if (budget !== null && this._fetchStyleSheets && typeof preloadStyleSheets === 'function') {
+          // What is left, never 0, which core reads as no budget.
+          const left = Math.max(budget - (Date.now() - started), MIN_BUDGET_MS);
+          if (left < budget) engineOptions.timeBudgetMs = left;
+          const notRead = sheets && Array.isArray(sheets.notRead) ? Array.from(sheets.notRead) : [];
+          this._styleSheetBudget = { budget, notRead };
         }
         return this._scanWindow(contextSelector, engineOptions, runOnly);
       });
@@ -585,12 +612,13 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
    * a sheet whose server doesn't share it stays unread. [] with
    * fetchStyleSheets(false), or a core before 1.14.0.
    */
-  _preloadStyleSheets(win) {
+  _preloadStyleSheets(win, deadline) {
     if (!this._fetchStyleSheets || typeof preloadStyleSheets !== 'function') return [];
     return new Cypress.Promise((resolve) => {
       try {
         const inPage = win.eval('(' + preloadStyleSheets.toString() + ')');
-        Promise.resolve(inPage({ timeoutMs: 5000 })).then(resolve, () => resolve([]));
+        const options = deadline === undefined ? { timeoutMs: 5000 } : { timeoutMs: 5000, deadline };
+        Promise.resolve(inPage(options)).then(resolve, () => resolve([]));
       } catch {
         resolve([]);
       }
@@ -600,6 +628,8 @@ class A11yCoreBuilder extends A11yCoreBuilderBase {
   _scanWindow(contextSelector, engineOptions, runOnly) {
     return cy.window().then((win) => {
       const scans = [{ win, framePath: [], result: this._runPage(win, contextSelector, engineOptions, runOnly) }];
+      // What the time budget did to the style sheets fetched for this scan.
+      this._applyStyleSheetBudget(scans[0].result);
       if (this._scanFrames) this._collectFrames(win, engineOptions, runOnly, scans, [], contextSelector);
 
       const finish = () => {
